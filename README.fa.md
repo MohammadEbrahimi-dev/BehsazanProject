@@ -74,7 +74,7 @@ dotnet ef database update --project src/Infrastructure --startup-project src/Pre
 dotnet run --project src/Presentation
 ```
 
-یا فایل `Behsazan.slnx` را در Visual Studio / Cursor باز کنید و پروفایل **https** را اجرا کنید.
+یا فایل `Behsazan.slnx` را در Visual Studio باز کنید و پروفایل **https** را اجرا کنید.
 
 ۵. آدرس‌ها:
 
