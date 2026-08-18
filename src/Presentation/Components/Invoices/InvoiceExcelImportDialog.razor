@@ -1,0 +1,319 @@
+@inject IInvoiceService InvoiceService
+@inject IInvoiceExcelService ExcelService
+@inject CurrentUserAccessor CurrentUser
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Outlined.UploadFile" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">ورود فاکتور از اکسل</MudText>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
+                فایل باید شبیه قالب فاکتور بهسازان باشد. مشتری و پروژه را اینجا انتخاب کنید؛
+                اقلام تیرچه از اکسل خوانده و در پایگاه‌داده ثبت می‌شوند.
+            </MudAlert>
+
+            <MudAutocomplete T="CustomerLookupDto"
+                             @bind-Value="_selectedCustomer"
+                             @bind-Value:after="OnCustomerChangedAsync"
+                             Label="مشتری"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             SearchFunc="SearchCustomersAsync"
+                             ToStringFunc="@(c => c is null ? string.Empty : c.FullName)"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="true"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Disabled="@_isBusy"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Outlined.PersonSearch" />
+
+            <MudAutocomplete T="ProjectLookupDto"
+                             @bind-Value="_selectedProject"
+                             Label="پروژه"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             SearchFunc="SearchProjectsAsync"
+                             ToStringFunc="@(p => p is null ? string.Empty : p.ToString())"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="true"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Disabled="@(_isBusy || _selectedCustomer is null)"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Outlined.Apartment"
+                             HelperText="@(_selectedCustomer is null ? "ابتدا مشتری را انتخاب کنید" : null)" />
+
+            <MudDatePicker @bind-Date="_invoiceDate"
+                           Label="تاریخ فاکتور"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isBusy" />
+
+            <MudTextField @bind-Value="_title"
+                          Label="عنوان سقف"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          MaxLength="100"
+                          Clearable="true"
+                          Disabled="_isBusy"
+                          HelperText="مثلاً سقف اول، کسری خرپشته — از اکسل هم خوانده می‌شود" />
+
+            <MudNumericField T="decimal?"
+                             @bind-Value="_shippingCost"
+                             Label="هزینه حمل (اختیاری)"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             Min="0"
+                             HideSpinButtons="true"
+                             Disabled="_isBusy"
+                             HelperText="در صورت وجود سطر کرایه در اکسل، اینجا پر می‌شود" />
+
+            <InputFile OnChange="OnFileSelectedAsync"
+                       accept=".xlsx,.xls"
+                       disabled="@_isBusy"
+                       class="invoice-excel-input" />
+
+            @if (!string.IsNullOrWhiteSpace(_fileName))
+            {
+                <MudChip T="string"
+                         Color="Color.Primary"
+                         Variant="Variant.Outlined"
+                         Icon="@Icons.Material.Outlined.Description">
+                    @_fileName
+                </MudChip>
+            }
+
+            @if (_parseWarnings.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined">
+                    @foreach (var warning in _parseWarnings)
+                    {
+                        <div>@warning</div>
+                    }
+                </MudAlert>
+            }
+
+            @if (_items.Count > 0)
+            {
+                <div class="invoice-import-preview">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">
+                        پیش‌نمایش اقلام (@_items.Count.ToString("N0") ردیف)
+                    </MudText>
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true" Style="overflow-x:auto;">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>تعداد</th>
+                                <th>طول</th>
+                                <th>پایین</th>
+                                <th>بالا</th>
+                                <th>تقویتی</th>
+                                <th>%</th>
+                                <th>زیگزاگ</th>
+                                <th>قیمت واحد</th>
+                                <th>مبلغ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var i = 0; i < _items.Count; i++)
+                            {
+                                var item = _items[i];
+                                <tr>
+                                    <td>@(i + 1)</td>
+                                    <td>@item.Count</td>
+                                    <td>@item.Length.ToString("N4")</td>
+                                    <td>@InvoiceValidationRules.FormatTimesTwo(item.BottomRebar)</td>
+                                    <td>@item.TopRebar</td>
+                                    <td>@(item.ReinforcementBar?.ToString() ?? "—")</td>
+                                    <td>@(item.ReinforcementPercent?.ToString() ?? "—")</td>
+                                    <td>@InvoiceValidationRules.FormatTimesTwo(item.Zigzag)</td>
+                                    <td>@item.UnitPrice.ToString("N0")</td>
+                                    <td>@item.TotalPrice.ToString("N0")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-2">
+                        <MudText Typo="Typo.body2">جمع طول: @_items.Sum(i => i.TotalAmount).ToString("N3")</MudText>
+                        <MudText Typo="Typo.body2" Class="fw-600">
+                            جمع اقلام: @_items.Sum(i => i.TotalPrice).ToString("N0")
+                            @if (_shippingCost is > 0)
+                            {
+                                <text> + حمل @_shippingCost.Value.ToString("N0")</text>
+                            }
+                        </MudText>
+                    </MudStack>
+                </div>
+            }
+        </MudStack>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_isBusy">انصراف</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Outlined.Save"
+                   OnClick="SaveAsync"
+                   Disabled="@(!CanSave)">
+            ثبت فاکتور
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private CustomerLookupDto? _selectedCustomer;
+    private ProjectLookupDto? _selectedProject;
+    private DateTime? _invoiceDate = DateTime.Today;
+    private string? _title;
+    private decimal? _shippingCost;
+    private string? _fileName;
+    private List<InvoiceItemFormDto> _items = [];
+    private List<string> _parseWarnings = [];
+    private bool _isBusy;
+
+    private bool CanSave =>
+        !_isBusy
+        && _selectedProject is not null
+        && _selectedCustomer is not null
+        && _items.Count > 0
+        && _invoiceDate.HasValue;
+
+    private Task Cancel()
+    {
+        MudDialog.Cancel();
+        return Task.CompletedTask;
+    }
+
+    private async Task OnCustomerChangedAsync()
+    {
+        _selectedProject = null;
+        await Task.CompletedTask;
+    }
+
+    private async Task<IEnumerable<CustomerLookupDto>> SearchCustomersAsync(string? value, CancellationToken token) =>
+        await InvoiceService.SearchCustomersAsync(value, 20, token);
+
+    private async Task<IEnumerable<ProjectLookupDto>> SearchProjectsAsync(string? value, CancellationToken token)
+    {
+        var customerId = _selectedCustomer?.Id;
+        return await InvoiceService.SearchProjectsAsync(value, customerId, 20, token);
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null)
+            return;
+
+        const long maxBytes = 5 * 1024 * 1024;
+        if (file.Size > maxBytes)
+        {
+            Snackbar.Add("حجم فایل نباید بیش از ۵ مگابایت باشد", Severity.Error);
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            await using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            memory.Position = 0;
+
+            var result = await ExcelService.ParseImportAsync(memory);
+            if (!result.Succeeded)
+            {
+                _items = [];
+                _parseWarnings = [];
+                _fileName = null;
+                Snackbar.Add(result.Message, Severity.Error);
+                return;
+            }
+
+            _fileName = file.Name;
+            _items = result.Items;
+            _parseWarnings = result.Warnings.ToList();
+
+            if (result.InvoiceDate.HasValue)
+                _invoiceDate = result.InvoiceDate.Value.Date;
+
+            if (!string.IsNullOrWhiteSpace(result.Title))
+                _title = result.Title;
+
+            if (result.ShippingCost is > 0)
+                _shippingCost = result.ShippingCost;
+
+            Snackbar.Add(result.Message, Severity.Success);
+
+            foreach (var warning in result.Warnings.Take(3))
+                Snackbar.Add(warning, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در خواندن فایل: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave || _selectedProject is null || _selectedCustomer is null || !_invoiceDate.HasValue)
+            return;
+
+        if (_selectedProject.CustomerId != _selectedCustomer.Id)
+        {
+            Snackbar.Add("پروژه انتخاب‌شده متعلق به این مشتری نیست", Severity.Error);
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            var form = new InvoiceFormDto
+            {
+                ProjectId = _selectedProject.Id,
+                ProjectName = _selectedProject.Name,
+                CustomerId = _selectedCustomer.Id,
+                CustomerFullName = _selectedCustomer.FullName,
+                InvoiceDate = _invoiceDate.Value.Date,
+                Title = _title,
+                ShippingCost = _shippingCost,
+                Items = _items.Select(i => i.Duplicate()).ToList()
+            };
+            form.RecalculateAll();
+
+            var userId = await CurrentUser.GetUserIdAsync();
+            var result = await InvoiceService.CreateAsync(form, userId);
+            Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+            if (result.Succeeded)
+                MudDialog.Close(DialogResult.Ok(result.EntityId));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ثبت فاکتور: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

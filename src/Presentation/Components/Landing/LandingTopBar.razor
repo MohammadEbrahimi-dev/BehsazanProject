@@ -1,0 +1,38 @@
+<header class="landing-top animate-fade-in">
+    <a class="landing-logo" href="/" aria-label="بهسازان — صفحه اول">بهسازان</a>
+    <nav class="landing-top-nav" aria-label="پیمایش صفحه اول">
+        <a class="landing-top-link" href="#features">قابلیت‌ها</a>
+        <a class="landing-top-link" href="#workflow">گردش کار</a>
+        <a class="landing-top-link" href="/about">درباره پروژه</a>
+        @if (IsAuthenticated)
+        {
+            <div class="landing-welcome-chip">
+                <span class="landing-welcome-text">خوش آمدید، @UserName</span>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Inherit"
+                           Class="landing-top-login"
+                           Href="/dashboard"
+                           StartIcon="@Icons.Material.Outlined.Dashboard"
+                           Size="Size.Small">
+                    داشبورد
+                </MudButton>
+            </div>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Inherit"
+                       Class="landing-top-login"
+                       Href="/login"
+                       StartIcon="@Icons.Material.Filled.Login"
+                       Size="Size.Small">
+                ورود
+            </MudButton>
+        }
+    </nav>
+</header>
+
+@code {
+    [Parameter] public bool IsAuthenticated { get; set; }
+    [Parameter] public string UserName { get; set; } = "کاربر";
+}

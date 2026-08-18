@@ -1,0 +1,444 @@
+@page "/projects/{Id:int}"
+@attribute [Authorize]
+@inject IProjectService ProjectService
+@inject IInvoiceService InvoiceService
+@inject IProjectLedgerService LedgerService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_project is null ? "جزئیات پروژه" : _project.Name) | بهسازان</PageTitle>
+
+<div class="page">
+    @if (_isLoading)
+    {
+        <div class="panel">
+            <MudProgressLinear Indeterminate="true" Rounded="true" Color="Color.Primary" />
+            <p class="table-empty">در حال بارگذاری اطلاعات پروژه...</p>
+        </div>
+    }
+    else if (_project is null)
+    {
+        <div class="panel table-empty">
+            <MudIcon Icon="@Icons.Material.Outlined.DomainDisabled" Size="Size.Large" />
+            <p>پروژه مورد نظر یافت نشد یا حذف شده است.</p>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.ArrowForward"
+                       OnClick="GoToList">
+                بازگشت به لیست پروژه‌ها
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <header class="page-header animate-fade-in">
+            <div class="detail-identity">
+                <MudAvatar Color="Color.Secondary" Size="Size.Large">
+                    <MudIcon Icon="@Icons.Material.Outlined.Apartment" />
+                </MudAvatar>
+                <div>
+                    <h1 class="page-title">@_project.Name</h1>
+                    <p class="page-subtitle">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Primary"
+                                 OnClick="GoToCustomer">
+                            @_project.CustomerFullName
+                        </MudLink>
+                        <span class="muted"> — کد ملی: </span>
+                        <span class="mono">@_project.CustomerNationalCode</span>
+                    </p>
+                </div>
+            </div>
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Outlined.ArrowForward"
+                           OnClick="GoToList">
+                    لیست پروژه‌ها
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Person"
+                           OnClick="GoToCustomer">
+                    صفحه مشتری
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Edit"
+                           OnClick="OpenEditDialogAsync">
+                    ویرایش
+                </MudButton>
+                <MudTooltip Text="حذف پروژه">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                   Color="Color.Error"
+                                   Variant="Variant.Outlined"
+                                   OnClick="ConfirmDeleteAsync"
+                                   aria-label="حذف پروژه" />
+                </MudTooltip>
+            </MudStack>
+        </header>
+
+        <section class="detail-facts animate-fade-up">
+            <article class="fact-tile">
+                <span class="fact-label">نوع تیرچه</span>
+                <span class="fact-value fact-value-sm">@ProjectValidationRules.GetJoistTypeLabel(_project.JoistType)</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">فاکتورها</span>
+                <span class="fact-value">@_project.InvoicesCount.ToString("N0")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">واریزی‌ها</span>
+                <span class="fact-value">@_project.DepositsCount.ToString("N0")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">شماره دفتر کل</span>
+                <span class="fact-value fact-value-sm mono">
+                    @(_project.GeneralLedgerNumber?.ToString() ?? "—")
+                </span>
+            </article>
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">اطلاعات پروژه</h2>
+                    <p class="panel-sub">آدرس و تاریخ‌های ثبت و ویرایش</p>
+                </div>
+            </div>
+
+            <div class="detail-meta-grid">
+                <div>
+                    <span class="fact-label">آدرس</span>
+                    <p class="detail-meta-value">@_project.Address</p>
+                </div>
+                <div>
+                    <span class="fact-label">تاریخ ثبت</span>
+                    <p class="detail-meta-value">@PersianDate.Format(_project.CreatedAt)</p>
+                </div>
+                <div>
+                    <span class="fact-label">آخرین تغییر</span>
+                    <p class="detail-meta-value">
+                        @PersianDate.FormatOrDash(_project.ModifiedAt)
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">فاکتورهای پروژه</h2>
+                    <p class="panel-sub">فاکتورهای صادرشده برای این پروژه</p>
+                </div>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Text"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.ListAlt"
+                               OnClick="GoToProjectInvoices">
+                        همه فاکتورها
+                    </MudButton>
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.PostAdd"
+                               OnClick="GoToCreateInvoice">
+                        فاکتور جدید
+                    </MudButton>
+                </MudStack>
+            </div>
+
+            @if (_invoices.Count == 0)
+            {
+                <div class="table-empty">
+                    <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" Size="Size.Large" />
+                    <p>هنوز فاکتوری برای این پروژه ثبت نشده است.</p>
+                </div>
+            }
+            else
+            {
+                <MudTable Items="_invoices"
+                          Hover="true"
+                          Dense="true"
+                          Elevation="0"
+                          Breakpoint="Breakpoint.Sm"
+                          Class="data-table">
+                    <HeaderContent>
+                        <MudTh>شماره</MudTh>
+                        <MudTh>تاریخ</MudTh>
+                        <MudTh>عنوان سقف</MudTh>
+                        <MudTh>اقلام</MudTh>
+                        <MudTh>مبلغ</MudTh>
+                        <MudTh Class="text-center">عملیات</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="شماره">
+                            <MudLink Underline="Underline.Hover"
+                                     Color="Color.Primary"
+                                     Class="fw-600 mono"
+                                     OnClick="@(() => GoToInvoice(context.Id))">
+                                #@context.InvoiceNumber
+                            </MudLink>
+                        </MudTd>
+                        <MudTd DataLabel="تاریخ">
+                            @PersianDate.Format(context.InvoiceDate, includeTime: false)
+                        </MudTd>
+                        <MudTd DataLabel="عنوان سقف">
+                            @(string.IsNullOrWhiteSpace(context.Title) ? "—" : context.Title)
+                        </MudTd>
+                        <MudTd DataLabel="اقلام">
+                            <span class="count-badge">@context.ItemsCount</span>
+                        </MudTd>
+                        <MudTd DataLabel="مبلغ">
+                            <span class="amount-value">@context.TotalPrice.ToString("N0")</span>
+                        </MudTd>
+                        <MudTd DataLabel="عملیات" Class="text-center">
+                            <MudTooltip Text="جزئیات فاکتور">
+                                <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
+                                               Size="Size.Small"
+                                               OnClick="@(() => GoToInvoice(context.Id))"
+                                               aria-label="جزئیات فاکتور" />
+                            </MudTooltip>
+                            <MudTooltip Text="ویرایش فاکتور">
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                               Size="Size.Small"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => GoToEditInvoice(context.Id))"
+                                               aria-label="ویرایش فاکتور" />
+                            </MudTooltip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">وضعیت مالی و دفتر کل</h2>
+                    <p class="panel-sub">خلاصه فاکتورها، واریزی‌ها و مانده حساب پروژه</p>
+                </div>
+                <MudButton Size="Size.Small"
+                           Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.AccountBalance"
+                           OnClick="GoToLedger">
+                    دفتر کل
+                </MudButton>
+            </div>
+
+            @if (_ledger is null)
+            {
+                <div class="table-empty">
+                    <p>خلاصه مالی در دسترس نیست.</p>
+                </div>
+            }
+            else
+            {
+                <div class="detail-meta-grid ledger-summary-grid">
+                    <div>
+                        <span class="fact-label">جمع فاکتورها</span>
+                        <p class="detail-meta-value amount-value">@_ledger.InvoiceTotal.ToString("N0")</p>
+                        <span class="fact-hint">@_ledger.InvoiceCount.ToString("N0") فاکتور</span>
+                    </div>
+                    <div>
+                        <span class="fact-label">جمع واریزی‌ها</span>
+                        <p class="detail-meta-value amount-value ledger-credit">@_ledger.DepositTotal.ToString("N0")</p>
+                        <span class="fact-hint">@_ledger.DepositCount.ToString("N0") واریزی</span>
+                    </div>
+                    <div>
+                        <span class="fact-label">مانده حساب</span>
+                        <p class="detail-meta-value amount-value fw-600 @BalanceClass(_ledger.OutstandingBalance)">
+                            @_ledger.OutstandingBalance.ToString("N0")
+                        </p>
+                        <span class="fact-hint">ریال</span>
+                    </div>
+                </div>
+
+                @if (_ledger.Entries.Count == 0)
+                {
+                    <div class="table-empty mt-4">
+                        <MudIcon Icon="@Icons.Material.Outlined.AccountBalanceWallet" Size="Size.Large" />
+                        <p>هنوز فاکتور یا واریزی‌ای ثبت نشده است.</p>
+                    </div>
+                }
+                else
+                {
+                    <p class="panel-sub mt-4">
+                        آخرین ردیف‌های دفتر کل —
+                        <MudLink Underline="Underline.Hover" Color="Color.Primary" OnClick="GoToLedger">
+                            مشاهده کامل
+                        </MudLink>
+                    </p>
+                    <MudTable Items="_recentLedgerEntries"
+                              Hover="true"
+                              Dense="true"
+                              Elevation="0"
+                              Breakpoint="Breakpoint.Sm"
+                              Class="data-table ledger-table mt-2">
+                        <HeaderContent>
+                            <MudTh>تاریخ</MudTh>
+                            <MudTh>شرح</MudTh>
+                            <MudTh>بدهکار</MudTh>
+                            <MudTh>بستانکار</MudTh>
+                            <MudTh>مانده</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="تاریخ">
+                                @PersianDate.Format(context.Date, includeTime: false)
+                            </MudTd>
+                            <MudTd DataLabel="شرح">@context.Description</MudTd>
+                            <MudTd DataLabel="بدهکار">
+                                @(context.Debit > 0
+                                    ? context.Debit.ToString("N0")
+                                    : "—")
+                            </MudTd>
+                            <MudTd DataLabel="بستانکار">
+                                @(context.Credit > 0
+                                    ? context.Credit.ToString("N0")
+                                    : "—")
+                            </MudTd>
+                            <MudTd DataLabel="مانده">
+                                <span class="amount-value fw-600">@context.RunningBalance.ToString("N0")</span>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ProjectDetailsDto? _project;
+    private ProjectLedgerDto? _ledger;
+    private IReadOnlyList<InvoiceListItemDto> _invoices = Array.Empty<InvoiceListItemDto>();
+    private IReadOnlyList<ProjectLedgerEntryDto> _recentLedgerEntries = Array.Empty<ProjectLedgerEntryDto>();
+    private bool _isLoading = true;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var projectTask = ProjectService.GetByIdAsync(Id);
+            var invoicesTask = InvoiceService.GetByProjectAsync(Id);
+            var ledgerTask = LedgerService.GetByProjectIdAsync(Id);
+            await Task.WhenAll(projectTask, invoicesTask, ledgerTask);
+
+            _project = await projectTask;
+            if (_project is null)
+            {
+                _invoices = Array.Empty<InvoiceListItemDto>();
+                _ledger = null;
+                _recentLedgerEntries = Array.Empty<ProjectLedgerEntryDto>();
+                return;
+            }
+
+            _invoices = await invoicesTask;
+            _ledger = await ledgerTask;
+            _recentLedgerEntries = _ledger?.Entries.TakeLast(5).Reverse().ToList()
+                ?? (IReadOnlyList<ProjectLedgerEntryDto>)Array.Empty<ProjectLedgerEntryDto>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری اطلاعات پروژه: {ex.Message}", Severity.Error);
+            _project = null;
+            _ledger = null;
+            _invoices = Array.Empty<InvoiceListItemDto>();
+            _recentLedgerEntries = Array.Empty<ProjectLedgerEntryDto>();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string BalanceClass(decimal balance) =>
+        balance > 0 ? "ledger-balance-due" : balance < 0 ? "ledger-credit" : string.Empty;
+
+    private async Task OpenEditDialogAsync()
+    {
+        var parameters = new DialogParameters<ProjectFormDialog>
+        {
+            { x => x.ProjectId, Id }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = false
+        };
+
+        var dialog = await DialogService.ShowAsync<ProjectFormDialog>("ویرایش پروژه", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_project is null)
+            return;
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف پروژه" },
+            { x => x.Message, $"آیا از حذف «{_project.Name}» مطمئن هستید؟" },
+            { x => x.Details, _project.InvoicesCount > 0
+                ? $"این پروژه {_project.InvoicesCount} فاکتور دارد و تا زمانی که فاکتورهایش حذف نشوند قابل حذف نیست."
+                : "این عملیات قابل بازگشت نیست." },
+            { x => x.ConfirmText, "حذف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف پروژه", parameters, SmallDialogOptions);
+        var confirmation = await dialog.Result;
+
+        if (confirmation is null || confirmation.Canceled)
+            return;
+
+        var userId = await CurrentUser.GetUserIdAsync();
+        var result = await ProjectService.DeleteAsync(Id, userId);
+
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+        if (result.Succeeded)
+            GoToList();
+    }
+
+    private static DialogOptions SmallDialogOptions => new()
+    {
+        MaxWidth = MaxWidth.ExtraSmall,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+
+    private void GoToList() => NavManager.NavigateTo("/projects");
+
+    private void GoToCustomer()
+    {
+        if (_project is not null)
+            NavManager.NavigateTo($"/customers/{_project.CustomerId}");
+    }
+
+    private void GoToInvoice(int invoiceId) => NavManager.NavigateTo($"/invoices/{invoiceId}");
+
+    private void GoToEditInvoice(int invoiceId) => NavManager.NavigateTo($"/invoices/edit/{invoiceId}");
+
+    private void GoToProjectInvoices() => NavManager.NavigateTo($"/invoices?projectId={Id}");
+
+    private void GoToCreateInvoice() => NavManager.NavigateTo($"/invoices/new?projectId={Id}");
+
+    private void GoToLedger() => NavManager.NavigateTo($"/projects/{Id}/ledger");
+}

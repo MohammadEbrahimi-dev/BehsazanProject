@@ -1,0 +1,504 @@
+@page "/deposits"
+@attribute [Authorize]
+@inject IDepositService DepositService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>پرداخت‌ها | بهسازان</PageTitle>
+
+<div class="page">
+    <header class="page-header animate-fade-in">
+        <div>
+            <h1 class="page-title">مدیریت پرداخت‌ها (واریزی‌ها)</h1>
+            <p class="page-subtitle">
+                @if (_totalCount > 0)
+                {
+                    <text>@_totalCount.ToString("N0") واریزی ثبت شده است</text>
+                }
+                else
+                {
+                    <text>ثبت و پیگیری پرداخت‌های مشتریان</text>
+                }
+            </p>
+        </div>
+
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Outlined.Savings"
+                   OnClick="@(() => OpenCreateDialogAsync())"
+                   Disabled="_isLoading">
+            واریزی جدید
+        </MudButton>
+    </header>
+
+    <section class="panel animate-fade-up">
+        <div class="panel-toolbar panel-toolbar-wrap">
+            <MudTextField T="string"
+                          @bind-Value="_draftSearchTerm"
+                          Placeholder="جستجو بر اساس پیگیری، مرجع، شرح، پروژه یا مشتری..."
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Clearable="true"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Outlined.Search"
+                          OnKeyUp="OnSearchKeyUp"
+                          Disabled="_isLoading"
+                          Class="panel-search" />
+
+            <MudAutocomplete T="ProjectLookupDto"
+                             @bind-Value="_draftProjectFilter"
+                             Label="پروژه"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             SearchFunc="SearchProjectsAsync"
+                             ToStringFunc="@(p => p is null ? string.Empty : p.ToString())"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="true"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Disabled="_isLoading"
+                             Class="filter-field" />
+
+            <MudDatePicker @bind-Date="_draftDepositDateFrom"
+                           Label="از تاریخ"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isLoading"
+                           Class="filter-field filter-field-date" />
+
+            <MudDatePicker @bind-Date="_draftDepositDateTo"
+                           Label="تا تاریخ"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isLoading"
+                           Class="filter-field filter-field-date" />
+
+            <div class="filter-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.FilterAlt"
+                           OnClick="ApplyFiltersAsync"
+                           Disabled="_isLoading">
+                    اعمال فیلتر
+                </MudButton>
+
+                <MudTooltip Text="پاک کردن فیلترها">
+                    <MudIconButton Icon="@Icons.Material.Outlined.FilterAltOff"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="ClearFiltersAsync"
+                                   Disabled="@(_isLoading || !HasDraftOrAppliedFilters)"
+                                   aria-label="پاک کردن فیلترها" />
+                </MudTooltip>
+
+                <MudTooltip Text="بازخوانی لیست">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Refresh"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="ReloadAsync"
+                                   Disabled="_isLoading"
+                                   aria-label="بازخوانی" />
+                </MudTooltip>
+            </div>
+        </div>
+
+        <div class="@($"table-loading-wrap{(_isLoading ? " is-loading" : string.Empty)}")">
+            @if (_isLoading)
+            {
+                <MudProgressLinear Class="table-loading-bar" Indeterminate="true" Color="Color.Primary" />
+                <div class="table-loading-veil" aria-hidden="true"></div>
+            }
+
+            <MudTable @ref="_table"
+                      T="DepositListItemDto"
+                      ServerData="LoadServerDataAsync"
+                      Hover="true"
+                      Striped="false"
+                      Dense="true"
+                      Breakpoint="Breakpoint.Md"
+                      Elevation="0"
+                      RowsPerPage="10"
+                      Class="data-table"
+                      LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel T="DepositListItemDto"
+                                           SortLabel="@nameof(DepositSortBy.DepositDate)"
+                                           InitialDirection="SortDirection.Descending">
+                            تاریخ
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="DepositListItemDto" SortLabel="@nameof(DepositSortBy.ProjectName)">
+                            پروژه
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="DepositListItemDto" SortLabel="@nameof(DepositSortBy.CustomerName)">
+                            مشتری
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="DepositListItemDto" SortLabel="@nameof(DepositSortBy.Amount)">
+                            مبلغ
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="DepositListItemDto" SortLabel="@nameof(DepositSortBy.TrackingNumber)">
+                            شماره پیگیری
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>شماره مرجع</MudTh>
+                    <MudTh>شرح</MudTh>
+                    <MudTh Class="text-center">عملیات</MudTh>
+                </HeaderContent>
+
+                <RowTemplate>
+                    <MudTd DataLabel="تاریخ">
+                        <span class="muted">@PersianDate.Format(context.DepositDate)</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="پروژه">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Primary"
+                                 Class="fw-600"
+                                 OnClick="@(() => GoToProject(context.ProjectId))">
+                            @context.ProjectName
+                        </MudLink>
+                    </MudTd>
+
+                    <MudTd DataLabel="مشتری">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Default"
+                                 OnClick="@(() => GoToCustomer(context.CustomerId))">
+                            @context.CustomerFullName
+                        </MudLink>
+                    </MudTd>
+
+                    <MudTd DataLabel="مبلغ">
+                        <span class="amount-value ledger-credit">@context.Amount.ToString("N0")</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="شماره پیگیری">
+                        @(string.IsNullOrWhiteSpace(context.TrackingNumber) ? "—" : context.TrackingNumber)
+                    </MudTd>
+
+                    <MudTd DataLabel="شماره مرجع">
+                        @(string.IsNullOrWhiteSpace(context.ReferenceNumber) ? "—" : context.ReferenceNumber)
+                    </MudTd>
+
+                    <MudTd DataLabel="شرح">
+                        @(string.IsNullOrWhiteSpace(context.Description) ? "—" : context.Description)
+                    </MudTd>
+
+                    <MudTd DataLabel="عملیات" Class="text-center table-actions-cell">
+                        <MudTooltip Text="ویرایش">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                           Size="Size.Small"
+                                           Color="Color.Primary"
+                                           OnClick="@(() => OpenEditDialogAsync(context.Id))"
+                                           aria-label="ویرایش واریزی" />
+                        </MudTooltip>
+                        <MudTooltip Text="حذف">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="@(() => ConfirmDeleteAsync(context))"
+                                           aria-label="حذف واریزی" />
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+
+                <NoRecordsContent>
+                    <div class="table-empty">
+                        <MudIcon Icon="@Icons.Material.Outlined.AccountBalanceWallet" Size="Size.Large" />
+                        @if (HasAppliedFilters)
+                        {
+                            <p>واریزی‌ای با فیلترهای انتخاب‌شده یافت نشد.</p>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ClearFiltersAsync">
+                                پاک کردن فیلترها
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <p>هنوز واریزی ثبت نشده است.</p>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Outlined.Savings"
+                                       OnClick="@(() => OpenCreateDialogAsync())">
+                                ثبت اولین واریزی
+                            </MudButton>
+                        }
+                    </div>
+                </NoRecordsContent>
+
+                <LoadingContent>
+                    <div class="table-empty">در حال بارگذاری واریزی‌ها...</div>
+                </LoadingContent>
+
+                <PagerContent>
+                    <MudTablePager RowsPerPageString="تعداد در صفحه:"
+                                   InfoFormat="{first_item}-{last_item} از {all_items}"
+                                   PageSizeOptions="new[] { 10, 25, 50 }" />
+                </PagerContent>
+            </MudTable>
+        </div>
+    </section>
+</div>
+
+@code {
+    private MudTable<DepositListItemDto>? _table;
+
+    private string _draftSearchTerm = string.Empty;
+    private ProjectLookupDto? _draftProjectFilter;
+    private DateTime? _draftDepositDateFrom;
+    private DateTime? _draftDepositDateTo;
+
+    private string _searchTerm = string.Empty;
+    private ProjectLookupDto? _projectFilter;
+    private DateTime? _depositDateFrom;
+    private DateTime? _depositDateTo;
+
+    private int _totalCount;
+    private bool _isLoading;
+    private int _loadGeneration;
+    private bool _createDialogRequested;
+    private bool _projectFilterSeeded;
+    private IReadOnlyList<DepositListItemDto> _items = Array.Empty<DepositListItemDto>();
+
+    [SupplyParameterFromQuery(Name = "new")]
+    public string? NewDeposit { get; set; }
+
+    [SupplyParameterFromQuery(Name = "projectId")]
+    public int? ProjectIdFilter { get; set; }
+
+    private bool HasAppliedFilters =>
+        !string.IsNullOrWhiteSpace(_searchTerm)
+        || _projectFilter is not null
+        || _depositDateFrom.HasValue
+        || _depositDateTo.HasValue;
+
+    private bool HasDraftOrAppliedFilters =>
+        HasAppliedFilters
+        || !string.IsNullOrWhiteSpace(_draftSearchTerm)
+        || _draftProjectFilter is not null
+        || _draftDepositDateFrom.HasValue
+        || _draftDepositDateTo.HasValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ProjectIdFilter is > 0 && !_projectFilterSeeded)
+        {
+            _projectFilterSeeded = true;
+            var lookup = await DepositService.GetProjectLookupAsync(ProjectIdFilter.Value);
+            _draftProjectFilter = lookup;
+            _projectFilter = lookup;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _createDialogRequested || string.IsNullOrEmpty(NewDeposit))
+            return;
+
+        _createDialogRequested = true;
+        await OpenCreateDialogAsync(ProjectIdFilter);
+    }
+
+    private async Task<TableData<DepositListItemDto>> LoadServerDataAsync(
+        TableState state,
+        CancellationToken cancellationToken)
+    {
+        var generation = ++_loadGeneration;
+        _isLoading = true;
+
+        try
+        {
+            var query = new DepositQueryDto
+            {
+                SearchTerm = _searchTerm,
+                ProjectId = _projectFilter?.Id,
+                DepositDateFrom = _depositDateFrom,
+                DepositDateTo = _depositDateTo,
+                SortBy = ParseSortBy(state.SortLabel),
+                SortDescending = state.SortDirection != SortDirection.Ascending,
+                PageNumber = state.Page + 1,
+                PageSize = state.PageSize
+            };
+
+            var result = await DepositService.GetPagedAsync(query, cancellationToken);
+            _totalCount = result.TotalCount;
+            _items = result.Items;
+
+            return new TableData<DepositListItemDto>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new TableData<DepositListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری واریزی‌ها: {ex.Message}", Severity.Error);
+            return new TableData<DepositListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        finally
+        {
+            if (generation == _loadGeneration)
+                _isLoading = false;
+        }
+    }
+
+    private static DepositSortBy ParseSortBy(string? sortLabel) =>
+        Enum.TryParse<DepositSortBy>(sortLabel, out var parsed)
+            ? parsed
+            : DepositSortBy.DepositDate;
+
+    private async Task<IEnumerable<ProjectLookupDto>> SearchProjectsAsync(string? value, CancellationToken token) =>
+        await DepositService.SearchProjectsAsync(value, 20, token);
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter")
+            await ApplyFiltersAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _searchTerm = _draftSearchTerm?.Trim() ?? string.Empty;
+        _projectFilter = _draftProjectFilter;
+        _depositDateFrom = _draftDepositDateFrom;
+        _depositDateTo = _draftDepositDateTo;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _draftSearchTerm = string.Empty;
+        _draftProjectFilter = null;
+        _draftDepositDateFrom = null;
+        _draftDepositDateTo = null;
+
+        _searchTerm = string.Empty;
+        _projectFilter = null;
+        _depositDateFrom = null;
+        _depositDateTo = null;
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    #region Commands
+    private async Task OpenCreateDialogAsync(int? prefillProjectId = null)
+    {
+        var parameters = new DialogParameters<DepositFormDialog>();
+
+        if (prefillProjectId is > 0)
+            parameters.Add(x => x.PrefillProjectId, prefillProjectId);
+        else if (_projectFilter is not null)
+            parameters.Add(x => x.PrefillProjectId, _projectFilter.Id);
+
+        var dialog = await DialogService.ShowAsync<DepositFormDialog>("ثبت واریزی جدید", parameters, DialogOptions());
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+            await ReloadAsync();
+    }
+
+    private async Task OpenEditDialogAsync(int id)
+    {
+        try
+        {
+            var parameters = new DialogParameters<DepositFormDialog>
+            {
+                { x => x.DepositId, id }
+            };
+
+            var dialog = await DialogService.ShowAsync<DepositFormDialog>("ویرایش واریزی", parameters, DialogOptions());
+            var result = await dialog.Result;
+
+            if (result is { Canceled: false })
+                await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بازکردن فرم ویرایش: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(DepositListItemDto deposit)
+    {
+        var amountLabel = deposit.Amount.ToString("N0");
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف واریزی" },
+            { x => x.Message, $"آیا از حذف واریزی {amountLabel} ریال برای «{deposit.ProjectName}» مطمئن هستید؟" },
+            { x => x.Details, "این عملیات قابل بازگشت نیست." },
+            { x => x.ConfirmText, "حذف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف واریزی", parameters, DialogOptions(small: true));
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+            return;
+
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var deleteResult = await DepositService.DeleteAsync(deposit.Id, userId);
+
+            Snackbar.Add(
+                deleteResult.Message,
+                deleteResult.Succeeded ? Severity.Success : Severity.Error);
+
+            if (deleteResult.Succeeded)
+                await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف واریزی: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static DialogOptions DialogOptions(bool small = false) => new()
+    {
+        MaxWidth = small ? MaxWidth.ExtraSmall : MaxWidth.Medium,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+    #endregion
+
+    private void GoToProject(int id) => NavManager.NavigateTo($"/projects/{id}");
+
+    private void GoToCustomer(int id) => NavManager.NavigateTo($"/customers/{id}");
+}

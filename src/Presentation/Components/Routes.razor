@@ -1,0 +1,70 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Behsazan.Components.Layout
+@using Behsazan.Presentation.Services
+@inject ThemeModeService ThemeMode
+@inject IJSRuntime Js
+@implements IDisposable
+
+<MudRTLProvider RightToLeft="true">
+    <MudThemeProvider IsDarkMode="ThemeMode.IsDarkMode"
+                      IsDarkModeChanged="OnIsDarkModeChanged"
+                      Theme="_theme" />
+    <MudPopoverProvider />
+    <MudDialogProvider />
+    <MudSnackbarProvider />
+
+    <Router AppAssembly="typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+                <NotAuthorized>
+                    <LayoutView Layout="typeof(EmptyLayout)">
+                        @if (context.User.Identity?.IsAuthenticated ?? false)
+                        {
+                            <AccessDenied />
+                        }
+                        else
+                        {
+                            <RedirectToLogin />
+                        }
+                    </LayoutView>
+                </NotAuthorized>
+                <Authorizing>
+                    <div class="auth-loading">
+                        <div class="auth-loading-spinner" aria-hidden="true"></div>
+                        <p>در حال بررسی وضعیت ورود...</p>
+                    </div>
+                </Authorizing>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+</MudRTLProvider>
+
+@code {
+    private readonly MudTheme _theme = BehsazanTheme.Instance;
+    private bool _preferenceLoaded;
+
+    protected override void OnInitialized()
+    {
+        ThemeMode.Changed += OnThemeModeChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _preferenceLoaded)
+            return;
+
+        _preferenceLoaded = true;
+        await ThemeMode.RestoreAsync(Js);
+    }
+
+    private Task OnIsDarkModeChanged(bool value)
+    {
+        ThemeMode.SetDarkMode(value);
+        return Task.CompletedTask;
+    }
+
+    private void OnThemeModeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ThemeMode.Changed -= OnThemeModeChanged;
+}

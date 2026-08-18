@@ -1,0 +1,38 @@
+<MudDialog Class="confirm-dialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6" Class="confirm-dialog-title">@Title</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="confirm-dialog-body">
+            <MudIcon Icon="@Icon" Color="@Color" Class="confirm-dialog-icon" Size="Size.Large" />
+            <div class="confirm-dialog-text">
+                <MudText Typo="Typo.body1" Class="confirm-dialog-message">@Message</MudText>
+                @if (!string.IsNullOrWhiteSpace(Details))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">@Details</MudAlert>
+                }
+            </div>
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">@CancelText</MudButton>
+        <MudButton Variant="Variant.Filled" Color="@Color" OnClick="Confirm">@ConfirmText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string Title { get; set; } = "تأیید عملیات";
+    [Parameter] public string Message { get; set; } = "آیا از انجام این عملیات مطمئن هستید؟";
+    [Parameter] public string? Details { get; set; }
+    [Parameter] public string ConfirmText { get; set; } = "تأیید";
+    [Parameter] public string CancelText { get; set; } = "انصراف";
+    [Parameter] public Color Color { get; set; } = Color.Error;
+    [Parameter] public string Icon { get; set; } = Icons.Material.Outlined.WarningAmber;
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+    private void Cancel() => MudDialog.Cancel();
+}

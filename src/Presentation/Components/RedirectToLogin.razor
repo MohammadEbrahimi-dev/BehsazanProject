@@ -1,0 +1,55 @@
+@inject NavigationManager NavManager
+
+<div class="auth-gate">
+    <div class="auth-gate-card animate-fade-up">
+        <div class="auth-gate-icon">
+            <MudIcon Icon="@Icons.Material.Outlined.LockPerson" Size="Size.Large" />
+        </div>
+        <MudText Typo="Typo.h5" Class="mb-2">ورود لازم است</MudText>
+        <MudText Typo="Typo.body1" Class="auth-gate-message mb-6">
+            برای مشاهده این صفحه باید وارد حساب کاربری خود شوید.
+            اگر قبلاً وارد شده‌اید، ممکن است نشست شما منقضی شده باشد.
+        </MudText>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Size="Size.Large"
+                   FullWidth="true"
+                   StartIcon="@Icons.Material.Filled.Login"
+                   Href="@_loginUrl"
+                   Class="auth-gate-cta">
+            رفتن به صفحه ورود
+        </MudButton>
+        <MudButton Variant="Variant.Text"
+                   Color="Color.Secondary"
+                   FullWidth="true"
+                   Href="/"
+                   Class="mt-2">
+            بازگشت به صفحه اصلی
+        </MudButton>
+    </div>
+</div>
+
+@code {
+    private string _loginUrl = "/login";
+    private bool _redirectScheduled;
+
+    protected override void OnInitialized()
+    {
+        var returnUrl = NavManager.ToBaseRelativePath(NavManager.Uri);
+        var pathOnly = returnUrl.Split('?', 2)[0];
+        if (!string.IsNullOrWhiteSpace(pathOnly) &&
+            !pathOnly.StartsWith("login", StringComparison.OrdinalIgnoreCase))
+        {
+            _loginUrl = $"/login?returnUrl={Uri.EscapeDataString("/" + pathOnly.TrimStart('/'))}";
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender || _redirectScheduled)
+            return;
+
+        _redirectScheduled = true;
+        NavManager.NavigateTo(_loginUrl, forceLoad: false);
+    }
+}

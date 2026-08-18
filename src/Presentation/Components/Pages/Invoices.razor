@@ -1,0 +1,740 @@
+@page "/invoices"
+@attribute [Authorize]
+@inject IInvoiceService InvoiceService
+@inject IInvoiceExcelService ExcelService
+@inject IInvoicePdfService PdfService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime Js
+
+<PageTitle>فاکتورها | بهسازان</PageTitle>
+
+<div class="page">
+    <header class="page-header animate-fade-in">
+        <div>
+            <h1 class="page-title">مدیریت فاکتورها</h1>
+            <p class="page-subtitle">
+                @if (_totalCount > 0)
+                {
+                    <text>@_totalCount.ToString("N0") فاکتور ثبت شده است</text>
+                }
+                else
+                {
+                    <text>مشاهده و پیگیری فاکتورهای صادرشده</text>
+                }
+            </p>
+        </div>
+
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudButton Color="Color.Secondary"
+                       Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Outlined.UploadFile"
+                       OnClick="OpenImportDialogAsync"
+                       Disabled="_isLoading">
+                ورود از اکسل
+            </MudButton>
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       StartIcon="@Icons.Material.Outlined.PostAdd"
+                       OnClick="GoToCreate"
+                       Disabled="_isLoading">
+                فاکتور جدید
+            </MudButton>
+        </MudStack>
+    </header>
+
+    <section class="panel animate-fade-up">
+        <div class="panel-toolbar panel-toolbar-wrap">
+            <MudTextField T="string"
+                          @bind-Value="_draftSearchTerm"
+                          Placeholder="جستجو بر اساس شماره، عنوان سقف، مشتری یا پروژه..."
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Clearable="true"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Outlined.Search"
+                          OnKeyUp="OnSearchKeyUp"
+                          Disabled="_isLoading"
+                          Class="panel-search" />
+
+            <MudAutocomplete T="CustomerLookupDto"
+                             @bind-Value="_draftCustomerFilter"
+                             Label="مشتری"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             SearchFunc="SearchCustomersAsync"
+                             ToStringFunc="@(c => c is null ? string.Empty : c.FullName)"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="true"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Disabled="_isLoading"
+                             Class="filter-field" />
+
+            <MudAutocomplete T="ProjectLookupDto"
+                             @bind-Value="_draftProjectFilter"
+                             Label="پروژه"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             SearchFunc="SearchProjectsAsync"
+                             ToStringFunc="@(p => p is null ? string.Empty : p.ToString())"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="true"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Disabled="_isLoading"
+                             Class="filter-field" />
+
+            <MudDatePicker @bind-Date="_draftInvoiceDateFrom"
+                           Label="از تاریخ فاکتور"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isLoading"
+                           Class="filter-field filter-field-date" />
+
+            <MudDatePicker @bind-Date="_draftInvoiceDateTo"
+                           Label="تا تاریخ فاکتور"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isLoading"
+                           Class="filter-field filter-field-date" />
+
+            <div class="filter-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.FilterAlt"
+                           OnClick="ApplyFiltersAsync"
+                           Disabled="_isLoading">
+                    اعمال فیلتر
+                </MudButton>
+
+                <MudTooltip Text="پاک کردن فیلترها">
+                    <MudIconButton Icon="@Icons.Material.Outlined.FilterAltOff"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="ClearFiltersAsync"
+                                   Disabled="@(_isLoading || !HasDraftOrAppliedFilters)"
+                                   aria-label="پاک کردن فیلترها" />
+                </MudTooltip>
+
+                <MudTooltip Text="بازخوانی لیست">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Refresh"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="ReloadAsync"
+                                   Disabled="_isLoading"
+                                   aria-label="بازخوانی" />
+                </MudTooltip>
+            </div>
+        </div>
+
+        <div class="@($"table-loading-wrap{(_isLoading ? " is-loading" : string.Empty)}")">
+            @if (_isLoading)
+            {
+                <MudProgressLinear Class="table-loading-bar" Indeterminate="true" Color="Color.Primary" />
+                <div class="table-loading-veil" aria-hidden="true"></div>
+            }
+
+            <MudTable @ref="_table"
+                      T="InvoiceListItemDto"
+                      ServerData="LoadServerDataAsync"
+                      Hover="true"
+                      Striped="false"
+                      Dense="true"
+                      Breakpoint="Breakpoint.Md"
+                      Elevation="0"
+                      RowsPerPage="10"
+                      Class="data-table"
+                      LoadingProgressColor="Color.Primary"
+                      OnRowClick="OnRowClick"
+                      RowClass="invoice-row"
+                      RowClassFunc="SelectedRowClass">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto" SortLabel="@nameof(InvoiceSortBy.InvoiceNumber)">
+                            شماره
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto" SortLabel="@nameof(InvoiceSortBy.InvoiceDate)">
+                            تاریخ
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto" SortLabel="@nameof(InvoiceSortBy.CustomerName)">
+                            مشتری
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto" SortLabel="@nameof(InvoiceSortBy.ProjectName)">
+                            پروژه
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>عنوان سقف</MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto" SortLabel="@nameof(InvoiceSortBy.ItemsCount)">
+                            اقلام
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto" SortLabel="@nameof(InvoiceSortBy.TotalPrice)">
+                            مبلغ
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="InvoiceListItemDto"
+                                           SortLabel="@nameof(InvoiceSortBy.LastActivity)"
+                                           InitialDirection="SortDirection.Descending">
+                            آخرین تغییر
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh Class="text-center table-actions-cell">عملیات</MudTh>
+                </HeaderContent>
+
+                <RowTemplate>
+                    <MudTd DataLabel="شماره">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Primary"
+                                 Class="fw-600 mono"
+                                 OnClick="@(() => GoToDetails(context.Id))">
+                            #@context.InvoiceNumber
+                        </MudLink>
+                    </MudTd>
+
+                    <MudTd DataLabel="تاریخ">
+                        <span>@PersianDate.Format(context.InvoiceDate, includeTime: false)</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="مشتری">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Default"
+                                 OnClick="@(() => GoToCustomer(context.CustomerId))">
+                            @context.CustomerFullName
+                        </MudLink>
+                    </MudTd>
+
+                    <MudTd DataLabel="پروژه">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Default"
+                                 OnClick="@(() => GoToProject(context.ProjectId))">
+                            @context.ProjectName
+                        </MudLink>
+                    </MudTd>
+
+                    <MudTd DataLabel="عنوان سقف" Style="max-width:14rem">
+                        <span class="cell-ellipsis"
+                              title="@(string.IsNullOrWhiteSpace(context.Title) ? null : context.Title)">
+                            @(string.IsNullOrWhiteSpace(context.Title) ? "—" : context.Title)
+                        </span>
+                    </MudTd>
+
+                    <MudTd DataLabel="اقلام">
+                        <span class="count-badge">@context.ItemsCount</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="مبلغ">
+                        <span class="amount-value">@context.TotalPrice.ToString("N0")</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="آخرین تغییر">
+                        <span class="muted">@PersianDate.Format(context.LastActivityAt)</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="عملیات" Class="text-center table-actions-cell">
+                        <MudTooltip Text="جزئیات">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
+                                           Size="Size.Small"
+                                           OnClick="@(() => GoToDetails(context.Id))"
+                                           aria-label="جزئیات فاکتور" />
+                        </MudTooltip>
+                        <MudTooltip Text="خروجی اکسل">
+                            <MudIconButton Icon="@Icons.Custom.FileFormats.FileExcel"
+                                           Size="Size.Small"
+                                           Color="Color.Success"
+                                           Disabled="_isExporting"
+                                           OnClick="@(() => ExportExcelAsync(context.Id))"
+                                           aria-label="خروجی اکسل" />
+                        </MudTooltip>
+                        <MudTooltip Text="خروجی PDF">
+                            <MudIconButton Icon="@Icons.Material.Outlined.PictureAsPdf"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           Disabled="_isExporting"
+                                           OnClick="@(() => ExportPdfAsync(context.Id))"
+                                           aria-label="خروجی PDF" />
+                        </MudTooltip>
+                        <MudTooltip Text="ویرایش">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                           Size="Size.Small"
+                                           Color="Color.Primary"
+                                           OnClick="@(() => GoToEdit(context.Id))"
+                                           aria-label="ویرایش فاکتور" />
+                        </MudTooltip>
+                        <MudTooltip Text="حذف">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="@(() => ConfirmDeleteAsync(context))"
+                                           aria-label="حذف فاکتور" />
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+
+                <NoRecordsContent>
+                    <div class="table-empty">
+                        <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" Size="Size.Large" />
+                        @if (HasAppliedFilters)
+                        {
+                            <p>فاکتوری با فیلترهای انتخاب‌شده یافت نشد.</p>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ClearFiltersAsync">
+                                پاک کردن فیلترها
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <p>هنوز فاکتوری ثبت نشده است.</p>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Outlined.PostAdd"
+                                       OnClick="GoToCreate">
+                                صدور اولین فاکتور
+                            </MudButton>
+                        }
+                    </div>
+                </NoRecordsContent>
+
+                <LoadingContent>
+                    <div class="table-empty">در حال بارگذاری فاکتورها...</div>
+                </LoadingContent>
+
+                <PagerContent>
+                    <MudTablePager RowsPerPageString="تعداد در صفحه:"
+                                   InfoFormat="{first_item}-{last_item} از {all_items}"
+                                   PageSizeOptions="new[] { 10, 25, 50 }" />
+                </PagerContent>
+            </MudTable>
+        </div>
+    </section>
+
+    @if (_selectedInvoice is not null)
+    {
+        <section class="panel invoice-preview-panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">پیش‌نمایش فاکتور #@_selectedInvoice.InvoiceNumber</h2>
+                    <p class="panel-sub">انتخاب از لیست — برای جزئیات کامل صفحه فاکتور را باز کنید</p>
+                </div>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Success"
+                               StartIcon="@Icons.Custom.FileFormats.FileExcel"
+                               Disabled="_isExporting"
+                               OnClick="@(() => ExportExcelAsync(_selectedInvoice.Id))">
+                        اکسل
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Error"
+                               StartIcon="@Icons.Material.Outlined.PictureAsPdf"
+                               Disabled="_isExporting"
+                               OnClick="@(() => ExportPdfAsync(_selectedInvoice.Id))">
+                        PDF
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.Edit"
+                               OnClick="@(() => GoToEdit(_selectedInvoice.Id))">
+                        ویرایش
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.OpenInNew"
+                               OnClick="@(() => GoToDetails(_selectedInvoice.Id))">
+                        جزئیات کامل
+                    </MudButton>
+                    <MudIconButton Icon="@Icons.Material.Outlined.Close"
+                                   OnClick="ClearSelection"
+                                   aria-label="بستن پیش‌نمایش" />
+                </MudStack>
+            </div>
+
+            <div class="invoice-preview-meta">
+                <div>
+                    <span class="fact-label">مشتری</span>
+                    <p class="detail-meta-value">
+                        <MudLink Underline="Underline.Hover" Color="Color.Primary"
+                                 OnClick="@(() => GoToCustomer(_selectedInvoice.CustomerId))">
+                            @_selectedInvoice.CustomerFullName
+                        </MudLink>
+                    </p>
+                </div>
+                <div>
+                    <span class="fact-label">پروژه</span>
+                    <p class="detail-meta-value">
+                        <MudLink Underline="Underline.Hover" Color="Color.Primary"
+                                 OnClick="@(() => GoToProject(_selectedInvoice.ProjectId))">
+                            @_selectedInvoice.ProjectName
+                        </MudLink>
+                    </p>
+                </div>
+                <div>
+                    <span class="fact-label">تاریخ</span>
+                    <p class="detail-meta-value">@PersianDate.Format(_selectedInvoice.InvoiceDate, includeTime: false)</p>
+                </div>
+                <div>
+                    <span class="fact-label">عنوان سقف</span>
+                    <p class="detail-meta-value">
+                        @(string.IsNullOrWhiteSpace(_selectedInvoice.Title) ? "—" : _selectedInvoice.Title)
+                    </p>
+                </div>
+                <div>
+                    <span class="fact-label">مبلغ کل</span>
+                    <p class="detail-meta-value amount-value">@_selectedInvoice.TotalPrice.ToString("N0")</p>
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private MudTable<InvoiceListItemDto>? _table;
+
+    private string _draftSearchTerm = string.Empty;
+    private CustomerLookupDto? _draftCustomerFilter;
+    private ProjectLookupDto? _draftProjectFilter;
+    private DateTime? _draftInvoiceDateFrom;
+    private DateTime? _draftInvoiceDateTo;
+
+    private string _searchTerm = string.Empty;
+    private CustomerLookupDto? _customerFilter;
+    private ProjectLookupDto? _projectFilter;
+    private DateTime? _invoiceDateFrom;
+    private DateTime? _invoiceDateTo;
+
+    private InvoiceListItemDto? _selectedInvoice;
+    private int _totalCount;
+    private bool _isLoading;
+    private bool _isExporting;
+    private int _loadGeneration;
+    private bool _filtersSeeded;
+    private IReadOnlyList<InvoiceListItemDto> _items = Array.Empty<InvoiceListItemDto>();
+
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public int? CustomerIdFilter { get; set; }
+
+    [SupplyParameterFromQuery(Name = "projectId")]
+    public int? ProjectIdFilter { get; set; }
+
+    private bool HasAppliedFilters =>
+        !string.IsNullOrWhiteSpace(_searchTerm)
+        || _customerFilter is not null
+        || _projectFilter is not null
+        || _invoiceDateFrom.HasValue
+        || _invoiceDateTo.HasValue;
+
+    private bool HasDraftOrAppliedFilters =>
+        HasAppliedFilters
+        || !string.IsNullOrWhiteSpace(_draftSearchTerm)
+        || _draftCustomerFilter is not null
+        || _draftProjectFilter is not null
+        || _draftInvoiceDateFrom.HasValue
+        || _draftInvoiceDateTo.HasValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_filtersSeeded)
+            return;
+
+        _filtersSeeded = true;
+
+        if (CustomerIdFilter is > 0)
+        {
+            var lookup = await InvoiceService.GetCustomerLookupAsync(CustomerIdFilter.Value);
+            _draftCustomerFilter = lookup;
+            _customerFilter = lookup;
+        }
+
+        if (ProjectIdFilter is > 0)
+        {
+            var lookup = await InvoiceService.GetProjectLookupAsync(ProjectIdFilter.Value);
+            _draftProjectFilter = lookup;
+            _projectFilter = lookup;
+        }
+    }
+
+    private async Task<TableData<InvoiceListItemDto>> LoadServerDataAsync(
+        TableState state,
+        CancellationToken cancellationToken)
+    {
+        var generation = ++_loadGeneration;
+        _isLoading = true;
+
+        try
+        {
+            var query = new InvoiceQueryDto
+            {
+                SearchTerm = _searchTerm,
+                CustomerId = _customerFilter?.Id,
+                ProjectId = _projectFilter?.Id,
+                InvoiceDateFrom = _invoiceDateFrom,
+                InvoiceDateTo = _invoiceDateTo,
+                SortBy = ParseSortBy(state.SortLabel),
+                SortDescending = state.SortDirection != SortDirection.Ascending,
+                PageNumber = state.Page + 1,
+                PageSize = state.PageSize
+            };
+
+            var result = await InvoiceService.GetPagedAsync(query, cancellationToken);
+            _totalCount = result.TotalCount;
+            _items = result.Items;
+
+            if (_selectedInvoice is not null &&
+                result.Items.All(i => i.Id != _selectedInvoice.Id))
+            {
+                _selectedInvoice = null;
+            }
+
+            return new TableData<InvoiceListItemDto>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new TableData<InvoiceListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری فاکتورها: {ex.Message}", Severity.Error);
+            return new TableData<InvoiceListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        finally
+        {
+            if (generation == _loadGeneration)
+                _isLoading = false;
+        }
+    }
+
+    private static InvoiceSortBy ParseSortBy(string? sortLabel) =>
+        Enum.TryParse<InvoiceSortBy>(sortLabel, out var parsed)
+            ? parsed
+            : InvoiceSortBy.LastActivity;
+
+    private async Task<IEnumerable<CustomerLookupDto>> SearchCustomersAsync(string? value, CancellationToken token) =>
+        await InvoiceService.SearchCustomersAsync(value, 20, token);
+
+    private async Task<IEnumerable<ProjectLookupDto>> SearchProjectsAsync(string? value, CancellationToken token) =>
+        await InvoiceService.SearchProjectsAsync(value, _draftCustomerFilter?.Id, 20, token);
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter")
+            await ApplyFiltersAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _searchTerm = _draftSearchTerm?.Trim() ?? string.Empty;
+        _customerFilter = _draftCustomerFilter;
+        _projectFilter = _draftProjectFilter;
+        _invoiceDateFrom = _draftInvoiceDateFrom;
+        _invoiceDateTo = _draftInvoiceDateTo;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _draftSearchTerm = string.Empty;
+        _draftCustomerFilter = null;
+        _draftProjectFilter = null;
+        _draftInvoiceDateFrom = null;
+        _draftInvoiceDateTo = null;
+
+        _searchTerm = string.Empty;
+        _customerFilter = null;
+        _projectFilter = null;
+        _invoiceDateFrom = null;
+        _invoiceDateTo = null;
+
+        _selectedInvoice = null;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<InvoiceListItemDto> args)
+    {
+        if (args.Item is null)
+            return;
+
+        _selectedInvoice = args.Item;
+    }
+
+    private string SelectedRowClass(InvoiceListItemDto item, int _) =>
+        _selectedInvoice?.Id == item.Id ? "invoice-row-selected" : string.Empty;
+
+    private void ClearSelection() => _selectedInvoice = null;
+
+    private void GoToCreate()
+    {
+        if (_projectFilter is not null)
+            NavManager.NavigateTo($"/invoices/new?projectId={_projectFilter.Id}");
+        else
+            NavManager.NavigateTo("/invoices/new");
+    }
+
+    private async Task ConfirmDeleteAsync(InvoiceListItemDto invoice)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف فاکتور" },
+            { x => x.Message, $"آیا از حذف فاکتور شماره {invoice.InvoiceNumber} مطمئن هستید؟" },
+            { x => x.Details, "این عملیات قابل بازگشت نیست." },
+            { x => x.ConfirmText, "حذف فاکتور" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف فاکتور", parameters, new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraSmall,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = false
+        });
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+            return;
+
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var deleteResult = await InvoiceService.DeleteAsync(invoice.Id, userId);
+
+            Snackbar.Add(
+                deleteResult.Message,
+                deleteResult.Succeeded ? Severity.Success : Severity.Error);
+
+            if (deleteResult.Succeeded)
+            {
+                if (_selectedInvoice?.Id == invoice.Id)
+                    _selectedInvoice = null;
+                await ReloadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف فاکتور: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenImportDialogAsync()
+    {
+        var dialog = await DialogService.ShowAsync<InvoiceExcelImportDialog>(
+            "ورود فاکتور از اکسل",
+            new DialogOptions
+            {
+                MaxWidth = MaxWidth.Medium,
+                FullWidth = true,
+                CloseButton = true,
+                BackdropClick = false
+            });
+
+        var result = await dialog.Result;
+        if (result is null || result.Canceled)
+            return;
+
+        await ReloadAsync();
+
+        if (result.Data is int invoiceId && invoiceId > 0)
+            NavManager.NavigateTo($"/invoices/{invoiceId}");
+    }
+
+    private async Task ExportExcelAsync(int invoiceId)
+    {
+        if (_isExporting)
+            return;
+
+        _isExporting = true;
+        try
+        {
+            var file = await ExcelService.ExportAsync(invoiceId);
+            if (file is null)
+            {
+                Snackbar.Add("ساخت فایل اکسل ممکن نشد", Severity.Error);
+                return;
+            }
+
+            await FileDownload.SaveAsync(Js, file);
+            Snackbar.Add("فایل اکسل آماده شد", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در خروجی اکسل: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
+    private async Task ExportPdfAsync(int invoiceId)
+    {
+        if (_isExporting)
+            return;
+
+        _isExporting = true;
+        try
+        {
+            var file = await PdfService.ExportAsync(invoiceId);
+            if (file is null)
+            {
+                Snackbar.Add("ساخت فایل PDF ممکن نشد", Severity.Error);
+                return;
+            }
+
+            await FileDownload.SaveAsync(Js, file);
+            Snackbar.Add("فایل PDF آماده شد", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در خروجی PDF: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
+    private void GoToDetails(int id) => NavManager.NavigateTo($"/invoices/{id}");
+
+    private void GoToEdit(int id) => NavManager.NavigateTo($"/invoices/edit/{id}");
+
+    private void GoToCustomer(int id) => NavManager.NavigateTo($"/customers/{id}");
+
+    private void GoToProject(int id) => NavManager.NavigateTo($"/projects/{id}");
+}

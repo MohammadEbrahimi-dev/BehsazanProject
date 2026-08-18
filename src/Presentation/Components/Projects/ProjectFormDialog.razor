@@ -1,0 +1,255 @@
+@inject IProjectService ProjectService
+@inject CurrentUserAccessor CurrentUser
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@(IsEdit ? Icons.Material.Outlined.EditNote : Icons.Material.Outlined.AddBusiness)"
+                     Color="Color.Primary" />
+            <MudText Typo="Typo.h6">@(IsEdit ? "ویرایش پروژه" : "ثبت پروژه جدید")</MudText>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_isLoadingForm)
+        {
+            <div class="table-empty py-6">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="mt-3 muted">در حال بارگذاری...</p>
+            </div>
+        }
+        else
+        {
+        <MudForm @ref="_form" Model="_model">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudAutocomplete T="CustomerLookupDto"
+                                     @bind-Value="_selectedCustomer"
+                                     Label="مشتری"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     SearchFunc="SearchCustomersAsync"
+                                     ToStringFunc="@(c => c is null ? string.Empty : $"{c.FullName} — {c.NationalCode}")"
+                                     ResetValueOnEmptyText="true"
+                                     CoerceText="false"
+                                     Clearable="true"
+                                     DebounceInterval="300"
+                                     MaxItems="20"
+                                     Adornment="Adornment.Start"
+                                     AdornmentIcon="@Icons.Material.Outlined.PersonSearch"
+                                     HelperText="نام یا کد ملی مشتری را جستجو کنید"
+                                     Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="8">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.Name"
+                                  Label="نام پروژه"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@ProjectValidationRules.MaxNameLength"
+                                  Immediate="true"
+                                  Validation="@(new Func<string, string?>(ProjectValidationRules.ValidateName))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Apartment"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="JoistType"
+                               @bind-Value="_model.JoistType"
+                               Label="نوع تیرچه"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Disabled="@_isSaving">
+                        @foreach (JoistType type in Enum.GetValues<JoistType>())
+                        {
+                            <MudSelectItem T="JoistType" Value="@type">
+                                @ProjectValidationRules.GetJoistTypeLabel(type)
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.Address"
+                                  Label="آدرس"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@ProjectValidationRules.MaxAddressLength"
+                                  Immediate="true"
+                                  Lines="2"
+                                  Validation="@(new Func<string, string?>(ProjectValidationRules.ValidateAddress))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Place"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="int?"
+                                     @bind-Value="_model.GeneralLedgerNumber"
+                                     Label="شماره دفتر کل"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     HideSpinButtons="true"
+                                     Clearable="true"
+                                     Validation="@(new Func<int?, string?>(ProjectValidationRules.ValidateGeneralLedgerNumber))"
+                                     HelperText="اختیاری"
+                                     Disabled="@_isSaving" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel" Disabled="@(_isSaving || _isLoadingForm)">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="SaveAsync"
+                   Disabled="@(_isSaving || _isLoadingForm)"
+                   StartIcon="@Icons.Material.Outlined.Save">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="ms-2" />
+                <span>در حال ذخیره...</span>
+            }
+            else
+            {
+                <span>@(IsEdit ? "ذخیره تغییرات" : "ثبت پروژه")</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public ProjectFormDto? Project { get; set; }
+
+    [Parameter] public int? ProjectId { get; set; }
+
+    [Parameter] public int? PrefillCustomerId { get; set; }
+
+    private MudForm? _form;
+    private ProjectFormDto _model = new();
+    private CustomerLookupDto? _selectedCustomer;
+    private bool _isSaving;
+    private bool _isLoadingForm;
+
+    private bool IsEdit => _model.Id > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Project is null && ProjectId is > 0)
+        {
+            _isLoadingForm = true;
+            try
+            {
+                var form = await ProjectService.GetForEditAsync(ProjectId.Value);
+                if (form is null)
+                {
+                    Snackbar.Add("پروژه مورد نظر یافت نشد", Severity.Warning);
+                    MudDialog.Cancel();
+                    return;
+                }
+
+                Project = form;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"خطا در بارگذاری پروژه: {ex.Message}", Severity.Error);
+                MudDialog.Cancel();
+                return;
+            }
+        }
+
+        _model = Project?.Clone() ?? new ProjectFormDto();
+
+        try
+        {
+            if (IsEdit && _model.CustomerId > 0)
+            {
+                _selectedCustomer = await ProjectService.GetCustomerLookupAsync(_model.CustomerId)
+                    ?? new CustomerLookupDto
+                    {
+                        Id = _model.CustomerId,
+                        FullName = _model.CustomerFullName
+                    };
+                return;
+            }
+
+            if (PrefillCustomerId is > 0)
+            {
+                _selectedCustomer = await ProjectService.GetCustomerLookupAsync(PrefillCustomerId.Value);
+                if (_selectedCustomer is not null)
+                    _model.CustomerId = _selectedCustomer.Id;
+            }
+        }
+        finally
+        {
+            _isLoadingForm = false;
+        }
+    }
+
+    private async Task<IEnumerable<CustomerLookupDto>> SearchCustomersAsync(string? value, CancellationToken token)
+    {
+        var results = await ProjectService.SearchCustomersAsync(value, 20, token);
+        return results;
+    }
+
+    private async Task SaveAsync()
+    {
+        _model.CustomerId = _selectedCustomer?.Id ?? 0;
+        _model.CustomerFullName = _selectedCustomer?.FullName ?? string.Empty;
+
+        if (_form is not null)
+        {
+            await _form.Validate();
+
+            if (!_form.IsValid)
+            {
+                Snackbar.Add("لطفاً خطاهای فرم را برطرف کنید", Severity.Warning);
+                return;
+            }
+        }
+
+        var customerError = ProjectValidationRules.ValidateCustomerId(_model.CustomerId);
+        if (customerError is not null)
+        {
+            Snackbar.Add(customerError, Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+
+            var result = IsEdit
+                ? await ProjectService.UpdateAsync(_model, userId)
+                : await ProjectService.CreateAsync(_model, userId);
+
+            if (!result.Succeeded)
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(result.Message, Severity.Success);
+            MudDialog.Close(DialogResult.Ok(result.EntityId ?? _model.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ذخیره پروژه: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

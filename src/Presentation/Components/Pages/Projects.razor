@@ -1,0 +1,529 @@
+@page "/projects"
+@attribute [Authorize]
+@inject IProjectService ProjectService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>پروژه‌ها | بهسازان</PageTitle>
+
+<div class="page">
+    <header class="page-header animate-fade-in">
+        <div>
+            <h1 class="page-title">مدیریت پروژه‌ها</h1>
+            <p class="page-subtitle">
+                @if (_totalCount > 0)
+                {
+                    <text>@_totalCount.ToString("N0") پروژه ثبت شده است</text>
+                }
+                else
+                {
+                    <text>ثبت و مدیریت پروژه‌های ساختمانی</text>
+                }
+            </p>
+        </div>
+
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Outlined.AddBusiness"
+                   OnClick="@(() => OpenCreateDialogAsync())"
+                   Disabled="_isLoading">
+            پروژه جدید
+        </MudButton>
+    </header>
+
+    <section class="panel animate-fade-up">
+        <div class="panel-toolbar panel-toolbar-wrap">
+            <MudTextField T="string"
+                          @bind-Value="_draftSearchTerm"
+                          Placeholder="جستجو بر اساس نام پروژه، آدرس، مشتری یا دفتر کل..."
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Clearable="true"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Outlined.Search"
+                          OnKeyUp="OnSearchKeyUp"
+                          Disabled="_isLoading"
+                          Class="panel-search" />
+
+            <MudAutocomplete T="CustomerLookupDto"
+                             @bind-Value="_draftCustomerFilter"
+                             Label="مشتری"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             SearchFunc="SearchCustomersAsync"
+                             ToStringFunc="@(c => c is null ? string.Empty : c.FullName)"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="true"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Disabled="_isLoading"
+                             Class="filter-field" />
+
+            <MudSelect T="JoistType?"
+                       @bind-Value="_draftJoistTypeFilter"
+                       Label="نوع تیرچه"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Clearable="true"
+                       Disabled="_isLoading"
+                       Class="filter-field filter-field-select">
+                @foreach (JoistType type in Enum.GetValues<JoistType>())
+                {
+                    <MudSelectItem T="JoistType?" Value="@((JoistType?)type)">
+                        @ProjectValidationRules.GetJoistTypeLabel(type)
+                    </MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudDatePicker @bind-Date="_draftCreatedFrom"
+                           Label="از تاریخ"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isLoading"
+                           Class="filter-field filter-field-date" />
+
+            <MudDatePicker @bind-Date="_draftCreatedTo"
+                           Label="تا تاریخ"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Editable="false"
+                           Culture="@PersianDate.Culture"
+                           DateFormat="yyyy/MM/dd"
+                           Disabled="_isLoading"
+                           Class="filter-field filter-field-date" />
+
+            <div class="filter-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.FilterAlt"
+                           OnClick="ApplyFiltersAsync"
+                           Disabled="_isLoading">
+                    اعمال فیلتر
+                </MudButton>
+
+                <MudTooltip Text="پاک کردن فیلترها">
+                    <MudIconButton Icon="@Icons.Material.Outlined.FilterAltOff"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="ClearFiltersAsync"
+                                   Disabled="@(_isLoading || !HasDraftOrAppliedFilters)"
+                                   aria-label="پاک کردن فیلترها" />
+                </MudTooltip>
+
+                <MudTooltip Text="بازخوانی لیست">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Refresh"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   OnClick="ReloadAsync"
+                                   Disabled="_isLoading"
+                                   aria-label="بازخوانی" />
+                </MudTooltip>
+            </div>
+        </div>
+
+        <div class="@($"table-loading-wrap{(_isLoading ? " is-loading" : string.Empty)}")">
+            @if (_isLoading)
+            {
+                <MudProgressLinear Class="table-loading-bar" Indeterminate="true" Color="Color.Primary" />
+                <div class="table-loading-veil" aria-hidden="true"></div>
+            }
+
+            <MudTable @ref="_table"
+                      T="ProjectListItemDto"
+                      ServerData="LoadServerDataAsync"
+                      Hover="true"
+                      Striped="false"
+                      Dense="true"
+                      Breakpoint="Breakpoint.Md"
+                      Elevation="0"
+                      RowsPerPage="10"
+                      Class="data-table"
+                      LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel T="ProjectListItemDto" SortLabel="@nameof(ProjectSortBy.Name)">
+                            نام پروژه
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ProjectListItemDto" SortLabel="@nameof(ProjectSortBy.CustomerName)">
+                            مشتری
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ProjectListItemDto" SortLabel="@nameof(ProjectSortBy.JoistType)">
+                            نوع تیرچه
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ProjectListItemDto" SortLabel="@nameof(ProjectSortBy.InvoicesCount)">
+                            فاکتورها
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ProjectListItemDto"
+                                           SortLabel="@nameof(ProjectSortBy.LastActivity)"
+                                           InitialDirection="SortDirection.Descending">
+                            آخرین تغییر
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh Class="text-center">عملیات</MudTh>
+                </HeaderContent>
+
+                <RowTemplate>
+                    <MudTd DataLabel="نام پروژه">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Primary"
+                                 Class="fw-600"
+                                 OnClick="@(() => GoToDetails(context.Id))">
+                            @context.Name
+                        </MudLink>
+                        @if (context.GeneralLedgerNumber.HasValue)
+                        {
+                            <div class="muted mono text-sm">دفتر کل: @context.GeneralLedgerNumber</div>
+                        }
+                    </MudTd>
+
+                    <MudTd DataLabel="مشتری">
+                        <MudLink Underline="Underline.Hover"
+                                 Color="Color.Default"
+                                 OnClick="@(() => GoToCustomer(context.CustomerId))">
+                            @context.CustomerFullName
+                        </MudLink>
+                    </MudTd>
+
+                    <MudTd DataLabel="نوع تیرچه">
+                        <span class="type-chip">@ProjectValidationRules.GetJoistTypeLabel(context.JoistType)</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="فاکتورها">
+                        <span class="count-badge">@context.InvoicesCount</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="آخرین تغییر">
+                        <span class="muted">@PersianDate.Format(context.LastActivityAt)</span>
+                    </MudTd>
+
+                    <MudTd DataLabel="عملیات" Class="text-center table-actions-cell">
+                        <MudTooltip Text="جزئیات">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
+                                           Size="Size.Small"
+                                           OnClick="@(() => GoToDetails(context.Id))"
+                                           aria-label="جزئیات پروژه" />
+                        </MudTooltip>
+                        <MudTooltip Text="ویرایش">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                           Size="Size.Small"
+                                           Color="Color.Primary"
+                                           OnClick="@(() => OpenEditDialogAsync(context.Id))"
+                                           aria-label="ویرایش پروژه" />
+                        </MudTooltip>
+                        <MudTooltip Text="حذف">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="@(() => ConfirmDeleteAsync(context))"
+                                           aria-label="حذف پروژه" />
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+
+                <NoRecordsContent>
+                    <div class="table-empty">
+                        <MudIcon Icon="@Icons.Material.Outlined.DomainDisabled" Size="Size.Large" />
+                        @if (HasAppliedFilters)
+                        {
+                            <p>پروژه‌ای با فیلترهای انتخاب‌شده یافت نشد.</p>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ClearFiltersAsync">
+                                پاک کردن فیلترها
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <p>هنوز پروژه‌ای ثبت نشده است.</p>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Outlined.AddBusiness"
+                                       OnClick="@(() => OpenCreateDialogAsync())">
+                                ثبت اولین پروژه
+                            </MudButton>
+                        }
+                    </div>
+                </NoRecordsContent>
+
+                <LoadingContent>
+                    <div class="table-empty">در حال بارگذاری پروژه‌ها...</div>
+                </LoadingContent>
+
+                <PagerContent>
+                    <MudTablePager RowsPerPageString="تعداد در صفحه:"
+                                   InfoFormat="{first_item}-{last_item} از {all_items}"
+                                   PageSizeOptions="new[] { 10, 25, 50 }" />
+                </PagerContent>
+            </MudTable>
+        </div>
+    </section>
+</div>
+
+@code {
+    private MudTable<ProjectListItemDto>? _table;
+
+    private string _draftSearchTerm = string.Empty;
+    private CustomerLookupDto? _draftCustomerFilter;
+    private JoistType? _draftJoistTypeFilter;
+    private DateTime? _draftCreatedFrom;
+    private DateTime? _draftCreatedTo;
+
+    private string _searchTerm = string.Empty;
+    private CustomerLookupDto? _customerFilter;
+    private JoistType? _joistTypeFilter;
+    private DateTime? _createdFrom;
+    private DateTime? _createdTo;
+
+    private int _totalCount;
+    private bool _isLoading;
+    private int _loadGeneration;
+    private bool _createDialogRequested;
+    private bool _customerFilterSeeded;
+    private IReadOnlyList<ProjectListItemDto> _items = Array.Empty<ProjectListItemDto>();
+
+    [SupplyParameterFromQuery(Name = "new")]
+    public string? NewProject { get; set; }
+
+    [SupplyParameterFromQuery(Name = "customerId")]
+    public int? CustomerIdFilter { get; set; }
+
+    private bool HasAppliedFilters =>
+        !string.IsNullOrWhiteSpace(_searchTerm)
+        || _customerFilter is not null
+        || _joistTypeFilter.HasValue
+        || _createdFrom.HasValue
+        || _createdTo.HasValue;
+
+    private bool HasDraftOrAppliedFilters =>
+        HasAppliedFilters
+        || !string.IsNullOrWhiteSpace(_draftSearchTerm)
+        || _draftCustomerFilter is not null
+        || _draftJoistTypeFilter.HasValue
+        || _draftCreatedFrom.HasValue
+        || _draftCreatedTo.HasValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CustomerIdFilter is > 0 && !_customerFilterSeeded)
+        {
+            _customerFilterSeeded = true;
+            var lookup = await ProjectService.GetCustomerLookupAsync(CustomerIdFilter.Value);
+            _draftCustomerFilter = lookup;
+            _customerFilter = lookup;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _createDialogRequested || string.IsNullOrEmpty(NewProject))
+            return;
+
+        _createDialogRequested = true;
+        await OpenCreateDialogAsync(CustomerIdFilter);
+    }
+
+    private async Task<TableData<ProjectListItemDto>> LoadServerDataAsync(
+        TableState state,
+        CancellationToken cancellationToken)
+    {
+        var generation = ++_loadGeneration;
+        _isLoading = true;
+
+        try
+        {
+            var query = new ProjectQueryDto
+            {
+                SearchTerm = _searchTerm,
+                CustomerId = _customerFilter?.Id,
+                JoistType = _joistTypeFilter,
+                CreatedFrom = _createdFrom,
+                CreatedTo = _createdTo,
+                SortBy = ParseSortBy(state.SortLabel),
+                SortDescending = state.SortDirection != SortDirection.Ascending,
+                PageNumber = state.Page + 1,
+                PageSize = state.PageSize
+            };
+
+            var result = await ProjectService.GetPagedAsync(query, cancellationToken);
+            _totalCount = result.TotalCount;
+            _items = result.Items;
+
+            return new TableData<ProjectListItemDto>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new TableData<ProjectListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری پروژه‌ها: {ex.Message}", Severity.Error);
+            return new TableData<ProjectListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        finally
+        {
+            if (generation == _loadGeneration)
+                _isLoading = false;
+        }
+    }
+
+    private static ProjectSortBy ParseSortBy(string? sortLabel) =>
+        Enum.TryParse<ProjectSortBy>(sortLabel, out var parsed)
+            ? parsed
+            : ProjectSortBy.LastActivity;
+
+    private async Task<IEnumerable<CustomerLookupDto>> SearchCustomersAsync(string? value, CancellationToken token) =>
+        await ProjectService.SearchCustomersAsync(value, 20, token);
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter")
+            await ApplyFiltersAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _searchTerm = _draftSearchTerm?.Trim() ?? string.Empty;
+        _customerFilter = _draftCustomerFilter;
+        _joistTypeFilter = _draftJoistTypeFilter;
+        _createdFrom = _draftCreatedFrom;
+        _createdTo = _draftCreatedTo;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _draftSearchTerm = string.Empty;
+        _draftCustomerFilter = null;
+        _draftJoistTypeFilter = null;
+        _draftCreatedFrom = null;
+        _draftCreatedTo = null;
+
+        _searchTerm = string.Empty;
+        _customerFilter = null;
+        _joistTypeFilter = null;
+        _createdFrom = null;
+        _createdTo = null;
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    #region Commands
+    private async Task OpenCreateDialogAsync(int? prefillCustomerId = null)
+    {
+        var parameters = new DialogParameters<ProjectFormDialog>();
+
+        if (prefillCustomerId is > 0)
+            parameters.Add(x => x.PrefillCustomerId, prefillCustomerId);
+        else if (_customerFilter is not null)
+            parameters.Add(x => x.PrefillCustomerId, _customerFilter.Id);
+
+        var dialog = await DialogService.ShowAsync<ProjectFormDialog>("ثبت پروژه جدید", parameters, DialogOptions());
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+            await ReloadAsync();
+    }
+
+    private async Task OpenEditDialogAsync(int id)
+    {
+        try
+        {
+            var parameters = new DialogParameters<ProjectFormDialog>
+            {
+                { x => x.ProjectId, id }
+            };
+
+            var dialog = await DialogService.ShowAsync<ProjectFormDialog>("ویرایش پروژه", parameters, DialogOptions());
+            var result = await dialog.Result;
+
+            if (result is { Canceled: false })
+                await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بازکردن فرم ویرایش: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(ProjectListItemDto project)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف پروژه" },
+            { x => x.Message, $"آیا از حذف «{project.Name}» مطمئن هستید؟" },
+            { x => x.Details, project.InvoicesCount > 0
+                ? $"این پروژه {project.InvoicesCount} فاکتور دارد و تا زمانی که فاکتورهایش حذف نشوند قابل حذف نیست."
+                : "این عملیات قابل بازگشت نیست." },
+            { x => x.ConfirmText, "حذف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف پروژه", parameters, DialogOptions(small: true));
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+            return;
+
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var deleteResult = await ProjectService.DeleteAsync(project.Id, userId);
+
+            Snackbar.Add(
+                deleteResult.Message,
+                deleteResult.Succeeded ? Severity.Success : Severity.Error);
+
+            if (deleteResult.Succeeded)
+                await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف پروژه: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static DialogOptions DialogOptions(bool small = false) => new()
+    {
+        MaxWidth = small ? MaxWidth.ExtraSmall : MaxWidth.Medium,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+    #endregion
+
+    private void GoToDetails(int id) => NavManager.NavigateTo($"/projects/{id}");
+
+    private void GoToCustomer(int id) => NavManager.NavigateTo($"/customers/{id}");
+}

@@ -1,0 +1,164 @@
+@page "/login"
+@layout Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@inject IAuthService AuthService
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>ورود | بهسازان</PageTitle>
+
+@if (_checkingAuth)
+{
+    <div class="auth-loading">
+        <div class="auth-loading-spinner" aria-hidden="true"></div>
+        <p>در حال بررسی وضعیت ورود...</p>
+    </div>
+}
+else if (!_isAuthenticated)
+{
+    <div class="login-page">
+        <div class="login-aside animate-fade-in">
+            <a class="landing-logo login-aside-logo" href="/">بهسازان</a>
+            <h2 class="login-aside-title">مدیریت تولید تیرچه</h2>
+            <p class="login-aside-text">
+                دسترسی امن به داشبورد، مشتریان، پروژه‌ها و فاکتورها.
+            </p>
+        </div>
+
+        <div class="login-panel animate-fade-up">
+            <div class="login-panel-inner">
+                <MudText Typo="Typo.h4" Class="mb-1">ورود به حساب</MudText>
+                <MudText Typo="Typo.body2" Class="login-panel-sub mb-6">
+                    نام کاربری و رمز عبور خود را وارد کنید
+                </MudText>
+
+                <MudForm @ref="_loginForm" Model="_model">
+                    <MudTextField T="string"
+                                  Label="نام کاربری"
+                                  @bind-Value="_model.Username"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  FullWidth="true"
+                                  Required="true"
+                                  RequiredError="نام کاربری الزامی است"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Person"
+                                  Class="mb-3" />
+
+                    <MudTextField T="string"
+                                  Label="رمز عبور"
+                                  @bind-Value="_model.Password"
+                                  InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  FullWidth="true"
+                                  Required="true"
+                                  RequiredError="رمز عبور الزامی است"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)"
+                                  OnAdornmentClick="TogglePassword"
+                                  Class="mb-4" />
+                </MudForm>
+
+                <MudButton Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           OnClick="HandleLoginAsync"
+                           Disabled="_isLoading"
+                           Class="login-submit">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="ms-2" />
+                        <span>در حال ورود...</span>
+                    }
+                    else
+                    {
+                        <span>ورود</span>
+                    }
+                </MudButton>
+
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Secondary"
+                           FullWidth="true"
+                           Href="/"
+                           Class="mt-3">
+                    بازگشت به صفحه اصلی
+                </MudButton>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private MudForm? _loginForm;
+    private readonly LoginRequestDto _model = new();
+    private bool _isLoading;
+    private bool _showPassword;
+    private bool _checkingAuth = true;
+    private bool _isAuthenticated;
+    private string? _returnUrl;
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _returnUrl = string.IsNullOrWhiteSpace(ReturnUrl) ? "/dashboard" : ReturnUrl;
+
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isAuthenticated = state.User.Identity?.IsAuthenticated == true;
+        _checkingAuth = false;
+
+        if (_isAuthenticated)
+        {
+            var target = IsSafeReturnUrl(_returnUrl) ? _returnUrl! : "/dashboard";
+            NavManager.NavigateTo(target);
+        }
+    }
+
+    private static bool IsSafeReturnUrl(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        url.StartsWith('/') &&
+        !url.StartsWith("//", StringComparison.Ordinal);
+
+    private void TogglePassword() => _showPassword = !_showPassword;
+
+    private async Task HandleLoginAsync()
+    {
+        if (_loginForm is not null)
+            await _loginForm.Validate();
+
+        if (_loginForm is not null && !_loginForm.IsValid)
+        {
+            Snackbar.Add("لطفاً همه فیلدها را تکمیل کنید", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var result = await AuthService.LoginAsync(_model);
+            if (result is not null)
+            {
+                await AuthStateProvider.LoginAsync(result);
+                Snackbar.Add("ورود با موفقیت انجام شد", Severity.Success);
+                var target = IsSafeReturnUrl(_returnUrl) ? _returnUrl! : "/dashboard";
+                NavManager.NavigateTo(target);
+            }
+            else
+            {
+                Snackbar.Add("نام کاربری یا رمز عبور اشتباه است", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

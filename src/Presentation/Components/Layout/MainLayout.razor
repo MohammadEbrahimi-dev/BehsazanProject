@@ -1,0 +1,145 @@
+@inherits LayoutComponentBase
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject ThemeModeService ThemeMode
+@inject IJSRuntime Js
+@implements IDisposable
+
+<MudLayout Class="app-layout">
+    <MudAppBar Elevation="0" Class="app-bar" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="DrawerToggle" aria-label="منو" />
+        <div class="app-brand">
+            <span class="app-brand-mark">بهسازان</span>
+            <span class="app-brand-sub">مدیریت تولید تیرچه</span>
+        </div>
+        <MudSpacer />
+        <MudTooltip Text="@(ThemeMode.IsDarkMode ? "حالت روشن" : "حالت تیره")">
+            <MudIconButton Icon="@(ThemeMode.IsDarkMode ? Icons.Material.Outlined.LightMode : Icons.Material.Outlined.DarkMode)"
+                           Color="Color.Inherit"
+                           OnClick="ToggleThemeAsync"
+                           aria-label="تغییر پوسته روشن/تیره" />
+        </MudTooltip>
+        @if (!string.IsNullOrWhiteSpace(_user))
+        {
+            <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Dense="true">
+                <ActivatorContent>
+                    <div class="app-user"
+                         role="button"
+                         tabindex="0"
+                         aria-label="منوی کاربر"
+                         @onclick="context.ToggleAsync">
+                        <MudText Typo="Typo.subtitle2" Class="app-user-name">@_user</MudText>
+                        <MudAvatar Size="Size.Small" Color="Color.Primary" Style="width:28px;height:28px;font-size:0.8rem;">@GetInitial(_user)</MudAvatar>
+                        <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Size="Size.Small" Class="ms-1" />
+                    </div>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Icon="@Icons.Material.Outlined.Logout"
+                                 Label="خروج"
+                                 OnClick="HandleLogoutAsync" />
+                </ChildContent>
+            </MudMenu>
+        }
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen"
+               ClipMode="DrawerClipMode.Always"
+               Elevation="0"
+               Variant="DrawerVariant.Responsive"
+               Width="232px"
+               Class="app-drawer">
+        <div class="drawer-brand">
+            <MudText Typo="Typo.caption" Class="mb-0">منوی اصلی</MudText>
+            <MudText Typo="Typo.caption" Class="drawer-brand-caption">دسترسی سریع</MudText>
+        </div>
+        <MudNavMenu Class="app-nav" Dense="true">
+            <MudNavLink Href="/dashboard" Icon="@Icons.Material.Outlined.Dashboard" Match="NavLinkMatch.All">داشبورد</MudNavLink>
+            <MudNavLink Href="/customers" Icon="@Icons.Material.Outlined.People">مشتریان</MudNavLink>
+            <MudNavLink Href="/projects" Icon="@Icons.Material.Outlined.Apartment">پروژه‌ها</MudNavLink>
+            <MudNavLink Href="/invoices" Icon="@Icons.Material.Outlined.ReceiptLong">فاکتورها</MudNavLink>
+            <MudNavLink Href="/deposits" Icon="@Icons.Material.Outlined.AccountBalanceWallet">پرداخت‌ها</MudNavLink>
+
+            <div class="nav-group-label">گزارش‌ها</div>
+            <MudNavLink Href="/reports/financial" Icon="@Icons.Material.Outlined.Insights">گزارش مالی</MudNavLink>
+
+            <div class="nav-group-label">پروژه</div>
+            <MudNavLink Href="/about" Icon="@Icons.Material.Outlined.Info">درباره پروژه</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="app-main">
+        <div class="app-content">
+            @Body
+        </div>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private string? _user;
+    private bool _disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        ThemeMode.Changed += OnThemeChanged;
+        await LoadUserDataAsync();
+    }
+
+    private void OnThemeChanged()
+    {
+        if (!_disposed)
+            _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        ThemeMode.Toggle();
+        await ThemeMode.PersistAsync(Js);
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        try
+        {
+            await LoadUserDataAsync();
+            if (!_disposed)
+                await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private async Task LoadUserDataAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _user = authState.User.Identity?.IsAuthenticated == true
+            ? authState.User.Identity.Name
+            : null;
+    }
+
+    private void DrawerToggle() => _drawerOpen = !_drawerOpen;
+
+    private static string GetInitial(string name) =>
+        string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[0].ToString().ToUpperInvariant();
+
+    private async Task HandleLogoutAsync()
+    {
+        if (AuthStateProvider is CustomAuthenticationStateProvider customAuthStateProvider)
+        {
+            await customAuthStateProvider.LogoutAsync();
+            Snackbar.Add("با موفقیت خارج شدید", Severity.Info);
+            NavManager.NavigateTo("/login");
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        ThemeMode.Changed -= OnThemeChanged;
+        _disposed = true;
+    }
+}

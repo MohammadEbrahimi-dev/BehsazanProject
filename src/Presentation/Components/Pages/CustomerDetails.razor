@@ -1,0 +1,415 @@
+@page "/customers/{Id:int}"
+@attribute [Authorize]
+@inject ICustomerService CustomerService
+@inject ICustomerPhoneNumberService PhoneService
+@inject IProjectService ProjectService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_customer is null ? "جزئیات مشتری" : _customer.FullName) | بهسازان</PageTitle>
+
+<div class="page">
+    @if (_isLoading)
+    {
+        <div class="panel">
+            <MudProgressLinear Indeterminate="true" Rounded="true" Color="Color.Primary" />
+            <p class="table-empty">در حال بارگذاری اطلاعات مشتری...</p>
+        </div>
+    }
+    else if (_customer is null)
+    {
+        <div class="panel table-empty">
+            <MudIcon Icon="@Icons.Material.Outlined.PersonOff" Size="Size.Large" />
+            <p>مشتری مورد نظر یافت نشد یا حذف شده است.</p>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.ArrowForward"
+                       OnClick="GoToList">
+                بازگشت به لیست مشتریان
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <header class="page-header animate-fade-in">
+            <div class="detail-identity">
+                <MudAvatar Color="Color.Primary" Size="Size.Large">@GetInitials(_customer.FullName)</MudAvatar>
+                <div>
+                    <h1 class="page-title">@_customer.FullName</h1>
+                    <p class="page-subtitle">کد ملی: <span class="mono">@_customer.NationalCode</span></p>
+                </div>
+            </div>
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Outlined.ArrowForward"
+                           OnClick="GoToList">
+                    لیست مشتریان
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Edit"
+                           OnClick="OpenEditDialogAsync">
+                    ویرایش
+                </MudButton>
+                <MudTooltip Text="حذف مشتری">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                   Color="Color.Error"
+                                   Variant="Variant.Outlined"
+                                   OnClick="ConfirmDeleteAsync"
+                                   aria-label="حذف مشتری" />
+                </MudTooltip>
+            </MudStack>
+        </header>
+
+        <section class="detail-facts animate-fade-up">
+            <article class="fact-tile">
+                <span class="fact-label">پروژه‌ها</span>
+                <span class="fact-value">@_customer.ProjectsCount.ToString("N0")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">شماره‌های تماس</span>
+                <span class="fact-value">@_phones.Count.ToString("N0")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">تاریخ ثبت</span>
+                <span class="fact-value fact-value-sm">@PersianDate.Format(_customer.CreatedAt)</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">آخرین تغییر</span>
+                <span class="fact-value fact-value-sm">
+                    @PersianDate.FormatOrDash(_customer.ModifiedAt)
+                </span>
+            </article>
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <CustomerPhoneEditor Phones="_phones"
+                                 OnSave="SavePhoneAsync"
+                                 OnDelete="DeletePhoneAsync"
+                                 OnSetPrimary="SetPrimaryPhoneAsync" />
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">پروژه‌های مشتری</h2>
+                    <p class="panel-sub">
+                        @if (_projects.Count > 0)
+                        {
+                            <text>@_projects.Count.ToString("N0") پروژه ثبت شده</text>
+                        }
+                        else
+                        {
+                            <text>پروژه‌های مرتبط با این مشتری</text>
+                        }
+                    </p>
+                </div>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Text"
+                               Color="Color.Primary"
+                               OnClick="@(() => NavManager.NavigateTo($"/projects?customerId={Id}"))">
+                        مشاهده در لیست
+                    </MudButton>
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.Add"
+                               OnClick="OpenCreateProjectDialogAsync">
+                        پروژه جدید
+                    </MudButton>
+                </MudStack>
+            </div>
+
+            @if (_projects.Count == 0)
+            {
+                <div class="table-empty">
+                    <MudIcon Icon="@Icons.Material.Outlined.DomainDisabled" Size="Size.Large" />
+                    <p>برای این مشتری پروژه‌ای ثبت نشده است.</p>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.AddBusiness"
+                               OnClick="OpenCreateProjectDialogAsync">
+                        ثبت اولین پروژه
+                    </MudButton>
+                </div>
+            }
+            else
+            {
+                <MudTable Items="_projects"
+                          Hover="true"
+                          Dense="true"
+                          Elevation="0"
+                          Breakpoint="Breakpoint.Sm"
+                          Class="data-table">
+                    <HeaderContent>
+                        <MudTh>نام پروژه</MudTh>
+                        <MudTh>نوع تیرچه</MudTh>
+                        <MudTh>فاکتورها</MudTh>
+                        <MudTh>آخرین تغییر</MudTh>
+                        <MudTh Class="text-center">عملیات</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="نام پروژه">
+                            <MudLink Underline="Underline.Hover"
+                                     Color="Color.Primary"
+                                     Class="fw-600"
+                                     OnClick="@(() => NavManager.NavigateTo($"/projects/{context.Id}"))">
+                                @context.Name
+                            </MudLink>
+                        </MudTd>
+                        <MudTd DataLabel="نوع تیرچه">
+                            <span class="type-chip">@ProjectValidationRules.GetJoistTypeLabel(context.JoistType)</span>
+                        </MudTd>
+                        <MudTd DataLabel="فاکتورها">
+                            <span class="count-badge">@context.InvoicesCount</span>
+                        </MudTd>
+                        <MudTd DataLabel="آخرین تغییر">
+                            <span class="muted">@PersianDate.Format(context.LastActivityAt)</span>
+                        </MudTd>
+                        <MudTd DataLabel="عملیات" Class="text-center">
+                            <MudTooltip Text="جزئیات پروژه">
+                                <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
+                                               Size="Size.Small"
+                                               OnClick="@(() => NavManager.NavigateTo($"/projects/{context.Id}"))"
+                                               aria-label="جزئیات پروژه" />
+                            </MudTooltip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private CustomerDetailsDto? _customer;
+    private List<CustomerPhoneNumberDto> _phones = new();
+    private List<ProjectListItemDto> _projects = new();
+    private bool _isLoading = true;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var customerTask = CustomerService.GetByIdAsync(Id);
+            var projectsTask = ProjectService.GetByCustomerAsync(Id);
+            await Task.WhenAll(customerTask, projectsTask);
+
+            _customer = await customerTask;
+            _phones = _customer?.PhoneNumbers.Select(p => p.Clone()).ToList() ?? new List<CustomerPhoneNumberDto>();
+            _projects = _customer is null
+                ? new List<ProjectListItemDto>()
+                : (await projectsTask).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری اطلاعات مشتری: {ex.Message}", Severity.Error);
+            _customer = null;
+            _phones = new List<CustomerPhoneNumberDto>();
+            _projects = new List<ProjectListItemDto>();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateProjectDialogAsync()
+    {
+        var parameters = new DialogParameters<ProjectFormDialog>
+        {
+            { x => x.PrefillCustomerId, Id }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = false
+        };
+
+        var dialog = await DialogService.ShowAsync<ProjectFormDialog>("ثبت پروژه جدید", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task ReloadPhonesAsync()
+    {
+        _phones = (await PhoneService.GetByCustomerAsync(Id)).Select(p => p.Clone()).ToList();
+
+        StateHasChanged();
+    }
+
+    #region Phone commands
+    private async Task<bool> SavePhoneAsync(CustomerPhoneNumberDto phone)
+    {
+        try
+        {
+            phone.CustomerId = Id;
+            var userId = await CurrentUser.GetUserIdAsync();
+
+            var result = phone.IsNew
+                ? await PhoneService.AddAsync(phone, userId)
+                : await PhoneService.UpdateAsync(phone, userId);
+
+            Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+            if (result.Succeeded)
+                await ReloadPhonesAsync();
+
+            return result.Succeeded;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ذخیره شماره تماس: {ex.Message}", Severity.Error);
+            return false;
+        }
+    }
+
+    private async Task<bool> DeletePhoneAsync(CustomerPhoneNumberDto phone)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف شماره تماس" },
+            { x => x.Message, $"آیا از حذف شماره {phone.PhoneNumber} مطمئن هستید؟" },
+            { x => x.Details, phone.IsBaseNumber && _phones.Count > 1
+                ? "این شماره اصلی است؛ پس از حذف، شماره دیگری به عنوان شماره اصلی انتخاب می‌شود."
+                : null },
+            { x => x.ConfirmText, "حذف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف شماره تماس", parameters, SmallDialogOptions);
+        var confirmation = await dialog.Result;
+
+        if (confirmation is null || confirmation.Canceled)
+            return false;
+
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var result = await PhoneService.DeleteAsync(phone.Id, userId);
+
+            Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+            if (result.Succeeded)
+                await ReloadPhonesAsync();
+
+            return result.Succeeded;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف شماره تماس: {ex.Message}", Severity.Error);
+            return false;
+        }
+    }
+
+    private async Task<bool> SetPrimaryPhoneAsync(CustomerPhoneNumberDto phone)
+    {
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var result = await PhoneService.SetPrimaryAsync(phone.Id, userId);
+
+            Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+            if (result.Succeeded)
+                await ReloadPhonesAsync();
+
+            return result.Succeeded;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در تعیین شماره اصلی: {ex.Message}", Severity.Error);
+            return false;
+        }
+    }
+    #endregion
+
+    #region Customer commands
+    private async Task OpenEditDialogAsync()
+    {
+        var parameters = new DialogParameters<CustomerFormDialog>
+        {
+            { x => x.CustomerId, Id }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = false
+        };
+
+        var dialog = await DialogService.ShowAsync<CustomerFormDialog>("ویرایش مشتری", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_customer is null)
+            return;
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف مشتری" },
+            { x => x.Message, $"آیا از حذف «{_customer.FullName}» مطمئن هستید؟" },
+            { x => x.Details, _customer.ProjectsCount > 0
+                ? $"این مشتری {_customer.ProjectsCount} پروژه دارد و تا زمانی که پروژه‌هایش حذف نشوند قابل حذف نیست."
+                : "شماره‌های تماس این مشتری نیز حذف خواهند شد." },
+            { x => x.ConfirmText, "حذف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف مشتری", parameters, SmallDialogOptions);
+        var confirmation = await dialog.Result;
+
+        if (confirmation is null || confirmation.Canceled)
+            return;
+
+        var userId = await CurrentUser.GetUserIdAsync();
+        var result = await CustomerService.DeleteAsync(Id, userId);
+
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+        if (result.Succeeded)
+            GoToList();
+    }
+    #endregion
+
+    private static DialogOptions SmallDialogOptions => new()
+    {
+        MaxWidth = MaxWidth.ExtraSmall,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+
+    private void GoToList() => NavManager.NavigateTo("/customers");
+
+    private static string GetInitials(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "?";
+
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return parts.Length == 1
+            ? parts[0][0].ToString()
+            : $"{parts[0][0]}{parts[^1][0]}";
+    }
+}

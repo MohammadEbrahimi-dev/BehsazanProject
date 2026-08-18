@@ -1,0 +1,82 @@
+<section class="landing-hero" aria-labelledby="landing-hero-title">
+    <div class="landing-hero-copy animate-fade-up">
+        <p class="landing-kicker">سامانه مدیریت مشتری، پروژه و فاکتور</p>
+        <h1 id="landing-hero-title" class="landing-brand">بهسازان</h1>
+        <p class="landing-headline">مدیریت ساده‌تر پروژه، فاکتور و امور مالی</p>
+        <p class="landing-lead">
+            از ثبت مشتری و پروژه تا صدور فاکتور، ثبت پرداخت و گزارش مالی —
+            همه‌چیز در یک سیستم ساده و یکپارچه.
+        </p>
+        <div class="landing-cta-row">
+            @if (IsAuthenticated)
+            {
+                <MudButton Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           Size="Size.Large"
+                           Class="landing-cta"
+                           Href="/dashboard"
+                           StartIcon="@Icons.Material.Outlined.Dashboard">
+                    ورود به داشبورد
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           Size="Size.Large"
+                           Class="landing-cta"
+                           Href="/login"
+                           StartIcon="@Icons.Material.Filled.Login">
+                    ورود به سامانه
+                </MudButton>
+            }
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Inherit"
+                       Size="Size.Large"
+                       Class="landing-cta-secondary"
+                       Href="/about"
+                       StartIcon="@Icons.Material.Outlined.Info">
+                درباره پروژه
+            </MudButton>
+        </div>
+    </div>
+
+    <div class="landing-visual animate-fade-up-delay" aria-hidden="true">
+        <div class="landing-mock" role="presentation">
+            <div class="landing-mock-bar">
+                <span class="landing-mock-dot"></span>
+                <span class="landing-mock-dot"></span>
+                <span class="landing-mock-dot"></span>
+                <span class="landing-mock-title">نمای داشبورد</span>
+            </div>
+            <div class="landing-mock-stats">
+                <div class="landing-mock-stat">
+                    <span>مشتریان</span>
+                    <strong>—</strong>
+                </div>
+                <div class="landing-mock-stat">
+                    <span>پروژه‌ها</span>
+                    <strong>—</strong>
+                </div>
+                <div class="landing-mock-stat">
+                    <span>فاکتورها</span>
+                    <strong>—</strong>
+                </div>
+            </div>
+            <div class="landing-mock-flow">
+                <span>مشتری</span>
+                <span class="landing-mock-arrow" aria-hidden="true">←</span>
+                <span>پروژه</span>
+                <span class="landing-mock-arrow" aria-hidden="true">←</span>
+                <span>فاکتور</span>
+                <span class="landing-mock-arrow" aria-hidden="true">←</span>
+                <span>پرداخت</span>
+            </div>
+            <p class="landing-visual-caption">پیش‌نمای ساختار سامانه — بدون داده نمونه</p>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter] public bool IsAuthenticated { get; set; }
+}

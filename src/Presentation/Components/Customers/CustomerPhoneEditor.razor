@@ -1,0 +1,339 @@
+<div class="phone-editor">
+    <div class="phone-editor-head">
+        <div>
+            <h3 class="phone-editor-title">شماره‌های تماس</h3>
+            <p class="phone-editor-sub">
+                @if (Phones.Count == 0)
+                {
+                    <text>هنوز شماره‌ای ثبت نشده است</text>
+                }
+                else
+                {
+                    <text>@Phones.Count شماره ثبت شده — شماره اصلی با ستاره مشخص است</text>
+                }
+            </p>
+        </div>
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Outlined.AddIcCall"
+                   Disabled="@(Disabled || _isAdding || _busy)"
+                   OnClick="StartAdd">
+            افزودن شماره
+        </MudButton>
+    </div>
+
+    @if (Phones.Count == 0 && !_isAdding)
+    {
+        <div class="phone-editor-empty">
+            <MudIcon Icon="@Icons.Material.Outlined.PhoneDisabled" Size="Size.Large" />
+            <p>برای این مشتری شماره تماسی ثبت نشده است.</p>
+        </div>
+    }
+    else
+    {
+        <div class="phone-rows">
+            @foreach (var phone in Phones)
+            {
+                <div class="phone-row @(phone.IsBaseNumber ? "phone-row-primary" : null)" @key="phone">
+                    @if (IsEditing(phone))
+                    {
+                        @RowEditor()
+                    }
+                    else
+                    {
+                        <div class="phone-row-main">
+                            <MudTooltip Text="@(phone.IsBaseNumber ? "شماره اصلی" : "تعیین به عنوان شماره اصلی")">
+                                <MudIconButton Icon="@(phone.IsBaseNumber ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                                               Color="@(phone.IsBaseNumber ? Color.Warning : Color.Default)"
+                                               Size="Size.Small"
+                                               Disabled="@(Disabled || _busy || phone.IsBaseNumber)"
+                                               OnClick="@(() => SetPrimaryAsync(phone))"
+                                               aria-label="تعیین شماره اصلی" />
+                            </MudTooltip>
+
+                            <span class="phone-number">@phone.PhoneNumber</span>
+
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@GetTypeColor(phone.PhoneType)">
+                                @CustomerValidationRules.GetPhoneTypeLabel(phone.PhoneType)
+                            </MudChip>
+
+                            @if (phone.IsBaseNumber)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">اصلی</MudChip>
+                            }
+                        </div>
+
+                        <div class="phone-row-actions">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                           Size="Size.Small"
+                                           Disabled="@(Disabled || _busy || _isAdding)"
+                                           OnClick="@(() => StartEdit(phone))"
+                                           aria-label="ویرایش شماره" />
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           Disabled="@(Disabled || _busy)"
+                                           OnClick="@(() => DeleteAsync(phone))"
+                                           aria-label="حذف شماره" />
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_isAdding)
+            {
+                <div class="phone-row phone-row-editing">
+                    @RowEditor()
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<CustomerPhoneNumberDto> Phones { get; set; } = new();
+
+    [Parameter] public EventCallback PhonesChanged { get; set; }
+
+    [Parameter] public Func<CustomerPhoneNumberDto, Task<bool>>? OnSave { get; set; }
+
+    [Parameter] public Func<CustomerPhoneNumberDto, Task<bool>>? OnDelete { get; set; }
+
+    [Parameter] public Func<CustomerPhoneNumberDto, Task<bool>>? OnSetPrimary { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private CustomerPhoneNumberDto? _editingRow;
+    private CustomerPhoneNumberDto _draft = new();
+    private bool _isAdding;
+    private bool _busy;
+    private string? _error;
+
+    private bool Persisted => OnSave is not null;
+
+    private bool IsEditing(CustomerPhoneNumberDto phone) =>
+        _editingRow is not null && ReferenceEquals(_editingRow, phone);
+
+    #region Row editor markup
+    private RenderFragment RowEditor() =>
+        @<div class="phone-row-editor">
+            <MudSelect T="PhoneType"
+                       @bind-Value="_draft.PhoneType"
+                       Label="نوع"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Dense="true"
+                       Class="phone-field-type">
+                <MudSelectItem Value="@PhoneType.Mobile">موبایل</MudSelectItem>
+                <MudSelectItem Value="@PhoneType.Telephone">تلفن</MudSelectItem>
+                <MudSelectItem Value="@PhoneType.Fax">فکس</MudSelectItem>
+            </MudSelect>
+
+            <MudTextField T="string"
+                          @bind-Value="_draft.PhoneNumber"
+                          Label="شماره تماس"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          MaxLength="11"
+                          Immediate="true"
+                          InputMode="InputMode.tel"
+                          Error="@(_error is not null)"
+                          ErrorText="@_error"
+                          OnKeyDown="OnEditorKeyDown"
+                          Class="phone-field-number" />
+
+            <MudSwitch T="bool"
+                       @bind-Value="_draft.IsBaseNumber"
+                       Color="Color.Warning"
+                       Label="شماره اصلی"
+                       Class="phone-field-primary" />
+
+            <div class="phone-row-actions">
+                <MudIconButton Icon="@Icons.Material.Filled.Check"
+                               Color="Color.Success"
+                               Size="Size.Small"
+                               Disabled="@_busy"
+                               OnClick="CommitAsync"
+                               aria-label="ثبت" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                               Size="Size.Small"
+                               Disabled="@_busy"
+                               OnClick="CancelEdit"
+                               aria-label="انصراف" />
+            </div>
+        </div>;
+    #endregion
+
+    #region Edit lifecycle
+    private void StartAdd()
+    {
+        _error = null;
+        _editingRow = null;
+        _isAdding = true;
+        _draft = new CustomerPhoneNumberDto
+        {
+            PhoneType = PhoneType.Mobile,
+            IsBaseNumber = Phones.Count == 0
+        };
+    }
+
+    private void StartEdit(CustomerPhoneNumberDto phone)
+    {
+        _error = null;
+        _isAdding = false;
+        _editingRow = phone;
+        _draft = phone.Clone();
+    }
+
+    private void CancelEdit()
+    {
+        _error = null;
+        _isAdding = false;
+        _editingRow = null;
+        _draft = new CustomerPhoneNumberDto();
+    }
+
+    private async Task OnEditorKeyDown(KeyboardEventArgs args)
+    {
+        switch (args.Key)
+        {
+            case "Enter":
+                await CommitAsync();
+                break;
+            case "Escape":
+                CancelEdit();
+                break;
+        }
+    }
+
+    private async Task CommitAsync()
+    {
+        _draft.PhoneNumber = CustomerValidationRules.NormalizeDigits(_draft.PhoneNumber);
+
+        _error = CustomerValidationRules.ValidatePhoneNumber(_draft.PhoneNumber, _draft.PhoneType);
+        if (_error is not null)
+            return;
+
+        var duplicate = Phones.Any(p =>
+            !ReferenceEquals(p, _editingRow) &&
+            p.PhoneNumber == _draft.PhoneNumber);
+
+        if (duplicate)
+        {
+            _error = "این شماره قبلاً ثبت شده است";
+            return;
+        }
+
+        if (Persisted)
+        {
+            _busy = true;
+            try
+            {
+                if (!await OnSave!(_draft.Clone()))
+                    return;
+            }
+            finally
+            {
+                _busy = false;
+            }
+
+            CancelEdit();
+            return;
+        }
+
+        ApplyInMemory();
+        CancelEdit();
+        await PhonesChanged.InvokeAsync();
+    }
+
+    private void ApplyInMemory()
+    {
+        if (_editingRow is not null)
+        {
+            _editingRow.PhoneNumber = _draft.PhoneNumber;
+            _editingRow.PhoneType = _draft.PhoneType;
+            _editingRow.IsBaseNumber = _draft.IsBaseNumber;
+            EnforceSinglePrimary(_editingRow);
+            return;
+        }
+
+        var added = _draft.Clone();
+        Phones.Add(added);
+        EnforceSinglePrimary(added);
+    }
+
+    private void EnforceSinglePrimary(CustomerPhoneNumberDto winner)
+    {
+        if (winner.IsBaseNumber)
+        {
+            foreach (var other in Phones.Where(p => !ReferenceEquals(p, winner)))
+                other.IsBaseNumber = false;
+
+            return;
+        }
+
+        if (Phones.Count > 0 && Phones.All(p => !p.IsBaseNumber))
+            Phones[0].IsBaseNumber = true;
+    }
+    #endregion
+
+    #region Row commands
+    private async Task SetPrimaryAsync(CustomerPhoneNumberDto phone)
+    {
+        if (OnSetPrimary is not null)
+        {
+            _busy = true;
+            try
+            {
+                await OnSetPrimary(phone);
+            }
+            finally
+            {
+                _busy = false;
+            }
+            return;
+        }
+
+        foreach (var other in Phones)
+            other.IsBaseNumber = ReferenceEquals(other, phone);
+
+        await PhonesChanged.InvokeAsync();
+    }
+
+    private async Task DeleteAsync(CustomerPhoneNumberDto phone)
+    {
+        if (OnDelete is not null)
+        {
+            _busy = true;
+            try
+            {
+                await OnDelete(phone);
+            }
+            finally
+            {
+                _busy = false;
+            }
+            return;
+        }
+
+        Phones.Remove(phone);
+
+        if (Phones.Count > 0 && Phones.All(p => !p.IsBaseNumber))
+            Phones[0].IsBaseNumber = true;
+
+        if (IsEditing(phone))
+            CancelEdit();
+
+        await PhonesChanged.InvokeAsync();
+    }
+    #endregion
+
+    private static Color GetTypeColor(PhoneType phoneType) => phoneType switch
+    {
+        PhoneType.Mobile => Color.Primary,
+        PhoneType.Telephone => Color.Info,
+        PhoneType.Fax => Color.Secondary,
+        _ => Color.Default
+    };
+}

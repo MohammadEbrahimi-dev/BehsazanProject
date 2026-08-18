@@ -1,0 +1,38 @@
+@page "/"
+@layout Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>بهسازان | مدیریت پروژه، فاکتور و امور مالی</PageTitle>
+
+<div class="landing">
+    <div class="landing-bg" aria-hidden="true"></div>
+    <div class="landing-grid" aria-hidden="true"></div>
+
+    <div class="landing-hero-shell">
+        <LandingTopBar IsAuthenticated="_isAuthenticated" UserName="@_userName" />
+        <LandingHero IsAuthenticated="_isAuthenticated" />
+    </div>
+
+    <div class="landing-body">
+        <LandingProblem />
+        <LandingSolution />
+        <LandingFeatures />
+        <LandingWorkflow />
+        <LandingLedger />
+        <LandingWhy />
+        <LandingCtaBand IsAuthenticated="_isAuthenticated" />
+    </div>
+</div>
+
+@code {
+    private bool _isAuthenticated;
+    private string _userName = "کاربر";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isAuthenticated = state.User.Identity?.IsAuthenticated == true;
+        _userName = state.User.Identity?.Name ?? "کاربر";
+    }
+}

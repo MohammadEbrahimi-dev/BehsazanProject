@@ -1,0 +1,197 @@
+@inject ICustomerService CustomerService
+@inject CurrentUserAccessor CurrentUser
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@(IsEdit ? Icons.Material.Outlined.EditNote : Icons.Material.Outlined.PersonAddAlt)"
+                     Color="Color.Primary" />
+            <MudText Typo="Typo.h6">@(IsEdit ? "ویرایش مشتری" : "ثبت مشتری جدید")</MudText>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_isLoadingForm)
+        {
+            <div class="table-empty py-6">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="mt-3 muted">در حال بارگذاری...</p>
+            </div>
+        }
+        else
+        {
+        <MudForm @ref="_form" Model="_model">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.FirstName"
+                                  Label="نام (اختیاری)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="100"
+                                  Immediate="true"
+                                  Validation="@(new Func<string, string?>(CustomerValidationRules.ValidateFirstName))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Badge"
+                                  HelperText="می‌توانید خالی بگذارید" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.LastName"
+                                  Label="نام خانوادگی"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="100"
+                                  Immediate="true"
+                                  Validation="@(new Func<string, string?>(CustomerValidationRules.ValidateLastName))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Badge" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.NationalCode"
+                                  Label="کد ملی (اختیاری)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="10"
+                                  Immediate="true"
+                                  InputMode="InputMode.numeric"
+                                  Validation="@(new Func<string, string?>(CustomerValidationRules.ValidateNationalCode))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.CreditCard"
+                                  HelperText="اختیاری — اگر وارد شود باید ۱۰ رقم معتبر باشد" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+
+        <MudDivider Class="my-4" />
+
+        <CustomerPhoneEditor Phones="_model.PhoneNumbers" Disabled="@_isSaving" />
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel" Disabled="@(_isSaving || _isLoadingForm)">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="SaveAsync"
+                   Disabled="@(_isSaving || _isLoadingForm)"
+                   StartIcon="@Icons.Material.Outlined.Save">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="ms-2" />
+                <span>در حال ذخیره...</span>
+            }
+            else
+            {
+                <span>@(IsEdit ? "ذخیره تغییرات" : "ثبت مشتری")</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public CustomerFormDto? Customer { get; set; }
+
+    [Parameter] public int? CustomerId { get; set; }
+
+    private MudForm? _form;
+    private CustomerFormDto _model = new();
+    private bool _isSaving;
+    private bool _isLoadingForm;
+
+    private bool IsEdit => _model.Id > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Customer is not null)
+        {
+            _model = Customer.Clone();
+            return;
+        }
+
+        if (CustomerId is > 0)
+        {
+            _isLoadingForm = true;
+            try
+            {
+                var form = await CustomerService.GetForEditAsync(CustomerId.Value);
+                if (form is null)
+                {
+                    Snackbar.Add("مشتری مورد نظر یافت نشد", Severity.Warning);
+                    MudDialog.Cancel();
+                    return;
+                }
+
+                _model = form;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"خطا در بارگذاری مشتری: {ex.Message}", Severity.Error);
+                MudDialog.Cancel();
+            }
+            finally
+            {
+                _isLoadingForm = false;
+            }
+
+            return;
+        }
+
+        _model = new CustomerFormDto();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form is not null)
+        {
+            await _form.Validate();
+
+            if (!_form.IsValid)
+            {
+                Snackbar.Add("لطفاً خطاهای فرم را برطرف کنید", Severity.Warning);
+                return;
+            }
+        }
+
+        if (_model.PhoneNumbers.Count == 0)
+        {
+            Snackbar.Add("حداقل یک شماره تماس برای مشتری ثبت کنید", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+
+            var result = IsEdit
+                ? await CustomerService.UpdateAsync(_model, userId)
+                : await CustomerService.CreateAsync(_model, userId);
+
+            if (!result.Succeeded)
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(result.Message, Severity.Success);
+            MudDialog.Close(DialogResult.Ok(result.EntityId ?? _model.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ذخیره مشتری: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

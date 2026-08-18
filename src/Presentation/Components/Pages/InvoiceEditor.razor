@@ -1,0 +1,696 @@
+@page "/invoices/new"
+@page "/invoices/edit/{Id:int}"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject IInvoiceService InvoiceService
+@inject CurrentUserAccessor CurrentUser
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime Js
+
+<PageTitle>@(_isEdit ? "ویرایش فاکتور" : "صدور فاکتور جدید") | بهسازان</PageTitle>
+
+<div class="page invoice-editor">
+    @if (_isLoading)
+    {
+        <div class="panel">
+            <MudProgressLinear Indeterminate="true" Rounded="true" Color="Color.Primary" />
+            <p class="table-empty">لطفاً کمی صبر کنید...</p>
+        </div>
+    }
+    else if (_loadFailed)
+    {
+        <div class="panel table-empty">
+            <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" Size="Size.Large" />
+            <p>فاکتور پیدا نشد یا حذف شده است.</p>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.ArrowForward"
+                       OnClick="GoToList">
+                بازگشت به لیست فاکتورها
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <header class="page-header animate-fade-in">
+            <div>
+                <h1 class="page-title">@(_isEdit ? $"ویرایش فاکتور #{_model.InvoiceNumber}" : "صدور فاکتور جدید")</h1>
+                <p class="page-subtitle">
+                    @if (_isEdit)
+                    {
+                        <text>تغییرات را انجام دهید و دکمه سبز «ذخیره» را بزنید</text>
+                    }
+                    else
+                    {
+                        <text>سه مرحله ساده: پروژه را انتخاب کنید، تاریخ را بگذارید، اقلام را وارد کنید</text>
+                    }
+                </p>
+            </div>
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Outlined"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Outlined.Close"
+                           OnClick="CancelAsync"
+                           Disabled="_isSaving">
+                    انصراف
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           Class="invoice-save-btn"
+                           StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveAsync"
+                           Disabled="_isSaving">
+                    @if (_isSaving)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="ms-2" />
+                        <span>در حال ذخیره...</span>
+                    }
+                    else
+                    {
+                        <span>@(_isEdit ? "ذخیره تغییرات" : "ثبت فاکتور")</span>
+                    }
+                </MudButton>
+            </MudStack>
+        </header>
+
+        <section class="invoice-live-totals animate-fade-up" aria-live="polite">
+            <div class="invoice-live-tile">
+                <span class="invoice-live-label">تعداد اقلام</span>
+                <span class="invoice-live-value">@_model.Items.Count.ToString("N0")</span>
+            </div>
+            <div class="invoice-live-tile">
+                <span class="invoice-live-label">جمع طول کل</span>
+                <span class="invoice-live-value">@_model.TotalAmount.ToString("N3")</span>
+            </div>
+            <div class="invoice-live-tile invoice-live-tile-grand">
+                <span class="invoice-live-label">مبلغ کل فاکتور (ریال)</span>
+                <span class="invoice-live-value amount-value">@_model.TotalPrice.ToString("N0")</span>
+            </div>
+        </section>
+
+        <section class="panel invoice-step animate-fade-up">
+            <div class="invoice-step-head">
+                <span class="invoice-step-badge">۱</span>
+                <div>
+                    <h2 class="panel-title">انتخاب پروژه</h2>
+                    <p class="panel-sub">پروژه‌ای که این فاکتور برای آن صادر می‌شود را پیدا کنید</p>
+                </div>
+            </div>
+
+            <MudAutocomplete T="ProjectLookupDto"
+                             Value="_selectedProject"
+                             ValueChanged="OnProjectChanged"
+                             Label="نام پروژه یا نام مشتری را بنویسید"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Normal"
+                             SearchFunc="SearchProjectsAsync"
+                             ToStringFunc="@(p => p is null ? string.Empty : p.ToString())"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             Clearable="@(!_isEdit)"
+                             DebounceInterval="300"
+                             MaxItems="20"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Outlined.Search"
+                             HelperText="مثلاً نام مشتری یا نام پروژه را تایپ کنید"
+                             Disabled="@(_isSaving)"
+                             Class="invoice-big-field" />
+
+            @if (_selectedProject is not null)
+            {
+                <div class="invoice-picked">
+                    <MudIcon Icon="@Icons.Material.Outlined.CheckCircle" Color="Color.Success" />
+                    <div>
+                        <strong>@_selectedProject.Name</strong>
+                        <span class="muted"> — مشتری: @_selectedProject.CustomerFullName</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="invoice-hint">
+                    <MudIcon Icon="@Icons.Material.Outlined.Info" />
+                    <span>اگر پروژه را نمی‌بینید، اول از منوی «پروژه‌ها» آن را ثبت کنید.</span>
+                </div>
+            }
+        </section>
+
+        <section class="panel invoice-step animate-fade-up">
+            <div class="invoice-step-head">
+                <span class="invoice-step-badge">۲</span>
+                <div>
+                    <h2 class="panel-title">تاریخ، عنوان سقف و هزینه حمل</h2>
+                    <p class="panel-sub">شماره فاکتور به‌صورت خودکار ساخته می‌شود — عنوان را آزاد بنویسید</p>
+                </div>
+            </div>
+
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="4">
+                    <MudDatePicker Date="_invoiceDate"
+                                   DateChanged="OnInvoiceDateChanged"
+                                   Label="تاریخ فاکتور"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Normal"
+                                   Editable="false"
+                                   Culture="@PersianDate.Culture"
+                                   DateFormat="yyyy/MM/dd"
+                                   Disabled="_isSaving"
+                                   Class="invoice-big-field" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_model.Title"
+                                  Label="عنوان سقف"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Normal"
+                                  MaxLength="100"
+                                  Immediate="true"
+                                  Clearable="true"
+                                  HelperText="مثلاً سقف اول، کسری خرپشته، …"
+                                  Disabled="_isSaving"
+                                  Class="invoice-big-field" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="decimal?"
+                                     Value="_model.ShippingCost"
+                                     ValueChanged="OnShippingChanged"
+                                     Label="هزینه حمل (اختیاری)"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Normal"
+                                     HideSpinButtons="true"
+                                     Clearable="true"
+                                     Min="0"
+                                     Immediate="true"
+                                     HelperText="اگر هزینه حمل ندارید خالی بگذارید"
+                                     Disabled="_isSaving"
+                                     Class="invoice-big-field" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <div class="invoice-number-box">
+                        <span class="fact-label">شماره فاکتور</span>
+                        <p class="invoice-number-value mono">
+                            @if (_isEdit)
+                            {
+                                @_model.InvoiceNumber
+                            }
+                            else
+                            {
+                                <text>خودکار بعد از ذخیره</text>
+                            }
+                        </p>
+                    </div>
+                </MudItem>
+            </MudGrid>
+        </section>
+
+        <section class="panel invoice-step animate-fade-up-delay">
+            <div class="invoice-step-head invoice-step-head-actions">
+                <div class="invoice-step-head">
+                    <span class="invoice-step-badge">۳</span>
+                    <div>
+                        <h2 class="panel-title">اقلام تیرچه</h2>
+                        <p class="panel-sub">هر ردیف یک نوع تیرچه است. دکمه‌های پایین را بزنید</p>
+                    </div>
+                </div>
+
+                <div class="invoice-item-actions">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Outlined.Add"
+                               OnClick="AddRow"
+                               Disabled="_isSaving">
+                        افزودن ردیف
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Outlined.ContentCopy"
+                               OnClick="CopySelectedOrLast"
+                               Disabled="@(_isSaving || _model.Items.Count == 0)">
+                        کپی ردیف
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Secondary"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Outlined.ContentPaste"
+                               OnClick="PasteRow"
+                               Disabled="@(_isSaving || _clipboardRow is null)">
+                        چسباندن
+                    </MudButton>
+                </div>
+            </div>
+
+            @if (_model.Items.Count == 0)
+            {
+                <div class="table-empty invoice-empty-items">
+                    <MudIcon Icon="@Icons.Material.Outlined.PlaylistAdd" Size="Size.Large" />
+                    <p>هنوز قلمی اضافه نشده. دکمه سبز «افزودن ردیف» را بزنید.</p>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Outlined.Add"
+                               OnClick="AddRow">
+                        افزودن اولین ردیف
+                    </MudButton>
+                </div>
+            }
+            else
+            {
+                <div class="invoice-editor-grid" role="grid" aria-label="اقلام فاکتور">
+                    @for (var index = 0; index < _model.Items.Count; index++)
+                    {
+                        var i = index;
+                        var item = _model.Items[i];
+                        <InvoiceLineCard @key="item.ClientKey"
+                                         Item="item"
+                                         Index="i"
+                                         RowNumber="@(i + 1)"
+                                         Selected="@(_selectedRowIndex == i)"
+                                         Disabled="_isSaving"
+                                         OnSelected="@(() => SelectRow(i))"
+                                         OnChanged="@(() => OnLineChanged(i))"
+                                         OnCopyClicked="@(() => CopyRow(i))"
+                                         OnDeleteClicked="@(() => RemoveRowAsync(i))" />
+                    }
+                </div>
+
+                <p class="invoice-kbd-hint muted">
+                    میانبرها: Alt+N ردیف خالی · Alt+C کپی · Alt+V چسباندن — یا از دکمه آبی پایین استفاده کنید
+                </p>
+            }
+        </section>
+
+        <footer class="invoice-sticky-bar">
+            <div class="invoice-sticky-total">
+                <span>مبلغ کل</span>
+                <strong class="amount-value">@_model.TotalPrice.ToString("N0")</strong>
+                <span class="muted">ریال</span>
+            </div>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined"
+                           Size="Size.Large"
+                           OnClick="CancelAsync"
+                           Disabled="_isSaving">
+                    انصراف
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           Class="invoice-save-btn"
+                           StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveAsync"
+                           Disabled="_isSaving">
+                    @(_isEdit ? "ذخیره تغییرات" : "ثبت فاکتور")
+                </MudButton>
+            </MudStack>
+        </footer>
+
+        <div class="@($"invoice-fab{(_toolsOpen ? " is-open" : string.Empty)}")">
+            @if (_toolsOpen)
+            {
+                <div class="invoice-fab-backdrop" @onclick="CloseTools"></div>
+                <div class="invoice-fab-sheet" role="menu">
+                    <p class="invoice-fab-sheet-title">ابزار ردیف فاکتور</p>
+                    <button type="button" class="invoice-fab-action" @onclick="FabAddRow"
+                            disabled="@(_isSaving ? true : null)">
+                        <MudIcon Icon="@Icons.Material.Outlined.Add" />
+                        <span>افزودن ردیف خالی</span>
+                    </button>
+                    <button type="button" class="invoice-fab-action" @onclick="FabCopyRow"
+                            disabled="@((_isSaving || _model.Items.Count == 0) ? true : null)">
+                        <MudIcon Icon="@Icons.Material.Outlined.ContentCopy" />
+                        <span>کپی ردیف انتخاب‌شده</span>
+                    </button>
+                    <button type="button" class="invoice-fab-action" @onclick="FabPasteRow"
+                            disabled="@((_isSaving || _clipboardRow is null) ? true : null)">
+                        <MudIcon Icon="@Icons.Material.Outlined.ContentPaste" />
+                        <span>چسباندن ردیف</span>
+                    </button>
+                    <button type="button" class="invoice-fab-cancel" @onclick="CloseTools">بستن</button>
+                </div>
+            }
+
+            <button type="button"
+                    class="invoice-fab-main"
+                    @onclick="ToggleTools"
+                    disabled="@(_isSaving ? true : null)"
+                    aria-label="ابزار فاکتور"
+                    aria-expanded="@_toolsOpen">
+                <MudIcon Icon="@(_toolsOpen ? Icons.Material.Filled.Close : Icons.Material.Filled.Apps)" />
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "projectId")]
+    public int? PrefillProjectId { get; set; }
+
+    private InvoiceFormDto _model = new();
+    private ProjectLookupDto? _selectedProject;
+    private DateTime? _invoiceDate = DateTime.Today;
+    private InvoiceItemFormDto? _clipboardRow;
+    private int? _selectedRowIndex;
+    private DotNetObjectReference<InvoiceEditor>? _hotkeyRef;
+    private bool _hotkeysRegistered;
+    private bool _toolsOpen;
+
+    private bool _isLoading = true;
+    private bool _loadFailed;
+    private bool _isSaving;
+    private bool _isEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            if (Id is > 0)
+            {
+                _isEdit = true;
+                var form = await InvoiceService.GetForEditAsync(Id.Value);
+                if (form is null)
+                {
+                    _loadFailed = true;
+                    return;
+                }
+
+                _model = form;
+                _invoiceDate = form.InvoiceDate;
+                _selectedProject = new ProjectLookupDto
+                {
+                    Id = form.ProjectId,
+                    Name = form.ProjectName,
+                    CustomerId = form.CustomerId,
+                    CustomerFullName = form.CustomerFullName
+                };
+                _model.RecalculateAll();
+                return;
+            }
+
+            _isEdit = false;
+            _model = new InvoiceFormDto
+            {
+                InvoiceDate = DateTime.Today,
+                Items = [CreateBlankItem()]
+            };
+            _invoiceDate = DateTime.Today;
+            _selectedRowIndex = 0;
+
+            if (PrefillProjectId is > 0)
+            {
+                var project = await InvoiceService.GetProjectLookupAsync(PrefillProjectId.Value);
+                if (project is not null)
+                    ApplyProject(project);
+            }
+
+            _model.RecalculateAll();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در باز کردن ویرایشگر: {ex.Message}", Severity.Error);
+            _loadFailed = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_hotkeysRegistered || _isLoading || _loadFailed)
+            return;
+
+        try
+        {
+            _hotkeyRef = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("behsazanInvoiceHotkeys.register", _hotkeyRef);
+            _hotkeysRegistered = true;
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    [JSInvokable]
+    public Task HandleInvoiceHotkey(string action)
+    {
+        if (_isSaving || _isLoading || _loadFailed)
+            return Task.CompletedTask;
+
+        switch (action)
+        {
+            case "add":
+                AddRow();
+                break;
+            case "copy":
+                CopySelectedOrLast();
+                break;
+            case "paste":
+                PasteRow();
+                break;
+        }
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleTools() => _toolsOpen = !_toolsOpen;
+
+    private void CloseTools() => _toolsOpen = false;
+
+    private void FabAddRow()
+    {
+        AddRow();
+        CloseTools();
+    }
+
+    private void FabCopyRow()
+    {
+        CopySelectedOrLast();
+        CloseTools();
+    }
+
+    private void FabPasteRow()
+    {
+        PasteRow();
+        CloseTools();
+    }
+
+    private async Task<IEnumerable<ProjectLookupDto>> SearchProjectsAsync(string? value, CancellationToken token) =>
+        await InvoiceService.SearchProjectsAsync(value, null, 20, token);
+
+    private Task OnProjectChanged(ProjectLookupDto? project)
+    {
+        ApplyProject(project);
+        return Task.CompletedTask;
+    }
+
+    private void ApplyProject(ProjectLookupDto? project)
+    {
+        _selectedProject = project;
+        _model.ProjectId = project?.Id ?? 0;
+        _model.ProjectName = project?.Name ?? string.Empty;
+        _model.CustomerId = project?.CustomerId ?? 0;
+        _model.CustomerFullName = project?.CustomerFullName ?? string.Empty;
+    }
+
+    private void OnInvoiceDateChanged(DateTime? value)
+    {
+        _invoiceDate = value;
+        _model.InvoiceDate = value?.Date ?? DateTime.Today;
+    }
+
+    private void OnShippingChanged(decimal? value)
+    {
+        _model.ShippingCost = value;
+        _model.RecalculateTotals();
+    }
+
+    private void OnLineChanged(int index)
+    {
+        _selectedRowIndex = index;
+        _model.RecalculateTotals();
+    }
+
+    private static InvoiceItemFormDto CreateBlankItem() => new()
+    {
+        Count = 1,
+        Length = 0,
+        UnitPrice = 0
+    };
+
+    private void SelectRow(int index) => _selectedRowIndex = index;
+
+    private void AddRow()
+    {
+        var next = CreateBlankItem();
+        next.Recalculate();
+        _model.Items.Add(next);
+        _selectedRowIndex = _model.Items.Count - 1;
+        _model.RecalculateTotals();
+    }
+
+    private void CopyRow(int index)
+    {
+        if (index < 0 || index >= _model.Items.Count)
+            return;
+
+        _clipboardRow = _model.Items[index].Duplicate();
+        _selectedRowIndex = index;
+        Snackbar.Add("ردیف کپی شد — برای افزودن، «چسباندن» را بزنید", Severity.Info);
+    }
+
+    private void CopySelectedOrLast()
+    {
+        var index = _selectedRowIndex ?? (_model.Items.Count - 1);
+        CopyRow(index);
+    }
+
+    private void PasteRow()
+    {
+        if (_clipboardRow is null)
+        {
+            Snackbar.Add("اول یک ردیف را با «کپی ردیف» کپی کنید", Severity.Info);
+            return;
+        }
+
+        var insertAt = (_selectedRowIndex ?? _model.Items.Count - 1) + 1;
+        if (insertAt < 0 || insertAt > _model.Items.Count)
+            insertAt = _model.Items.Count;
+
+        var copy = _clipboardRow.Duplicate();
+        _model.Items.Insert(insertAt, copy);
+        _selectedRowIndex = insertAt;
+        _model.RecalculateTotals();
+        Snackbar.Add("ردیف چسبانده شد", Severity.Success);
+    }
+
+    private async Task RemoveRowAsync(int index)
+    {
+        if (index < 0 || index >= _model.Items.Count)
+            return;
+
+        if (_model.Items.Count == 1)
+        {
+            Snackbar.Add("حداقل یک ردیف باید بماند. می‌توانید مقادیر آن را پاک کنید.", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف ردیف" },
+            { x => x.Message, $"آیا ردیف شماره {index + 1} حذف شود؟" },
+            { x => x.Details, "این کار فقط ردیف را از فاکتور برمی‌دارد." },
+            { x => x.ConfirmText, "حذف ردیف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف ردیف", parameters, SmallDialog);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled)
+            return;
+
+        _model.Items.RemoveAt(index);
+        if (_selectedRowIndex == index)
+            _selectedRowIndex = Math.Min(index, _model.Items.Count - 1);
+        else if (_selectedRowIndex > index)
+            _selectedRowIndex--;
+
+        _model.RecalculateTotals();
+    }
+
+    private async Task SaveAsync()
+    {
+        _model.ProjectId = _selectedProject?.Id ?? 0;
+        _model.InvoiceDate = _invoiceDate?.Date ?? DateTime.Today;
+        _model.RecalculateAll();
+
+        var errors = InvoiceValidationRules.ValidateForm(_model);
+        if (errors.Count > 0)
+        {
+            Snackbar.Add(errors[0], Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var result = _isEdit
+                ? await InvoiceService.UpdateAsync(_model, userId)
+                : await InvoiceService.CreateAsync(_model, userId);
+
+            if (!result.Succeeded)
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(result.Message, Severity.Success);
+            var id = result.EntityId ?? _model.Id;
+            NavManager.NavigateTo($"/invoices/{id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ذخیره فاکتور: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "انصراف" },
+            { x => x.Message, "از ویرایشگر خارج می‌شوید؟" },
+            { x => x.Details, "تغییرات ذخیره‌نشده از بین می‌رود." },
+            { x => x.ConfirmText, "خروج" },
+            { x => x.Color, Color.Warning }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("انصراف", parameters, SmallDialog);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled)
+            return;
+
+        if (_isEdit && Id is > 0)
+            NavManager.NavigateTo($"/invoices/{Id}");
+        else
+            GoToList();
+    }
+
+    private void GoToList() => NavManager.NavigateTo("/invoices");
+
+    private static DialogOptions SmallDialog => new()
+    {
+        MaxWidth = MaxWidth.ExtraSmall,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_hotkeysRegistered)
+                await Js.InvokeVoidAsync("behsazanInvoiceHotkeys.unregister");
+        }
+        catch
+        {
+        }
+
+        _hotkeyRef?.Dispose();
+        _hotkeyRef = null;
+        _hotkeysRegistered = false;
+    }
+}

@@ -1,0 +1,217 @@
+@page "/dashboard"
+@attribute [Authorize]
+@inject IDashboardService DashboardService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>داشبورد | بهسازان</PageTitle>
+
+<div class="dash">
+    <header class="dash-header animate-fade-in">
+        <div>
+            <h1 class="dash-title">داشبورد</h1>
+            <p class="dash-subtitle">نمای کلی وضعیت کسب‌وکار</p>
+        </div>
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Rounded="true" Color="Color.Primary" Class="dash-progress" />
+        }
+    </header>
+
+    <section class="dash-stats">
+        <StatCard Label="مشتریان"
+                  Value="@_stats.TotalCustomers.ToString("N0")"
+                  Hint="مشتری فعال"
+                  Icon="@Icons.Material.Outlined.People"
+                  Class="animate-fade-up" />
+        <StatCard Label="پروژه‌ها"
+                  Value="@_stats.TotalProjects.ToString("N0")"
+                  Hint="پروژه ثبت‌شده"
+                  Icon="@Icons.Material.Outlined.Apartment"
+                  Class="animate-fade-up" />
+        <StatCard Label="فاکتورها"
+                  Value="@_stats.TotalInvoices.ToString("N0")"
+                  Hint="فاکتور صادرشده"
+                  Icon="@Icons.Material.Outlined.ReceiptLong"
+                  Class="animate-fade-up" />
+        <StatCard Label="درآمد کل"
+                  Value="@_stats.TotalRevenue.ToString("N0")"
+                  Hint="ریال"
+                  Icon="@Icons.Material.Outlined.Payments"
+                  Class="animate-fade-up" />
+        <StatCard Label="پرداخت‌ها"
+                  Value="@_stats.TotalDeposits.ToString("N0")"
+                  Hint="ریال"
+                  Icon="@Icons.Material.Outlined.AccountBalanceWallet"
+                  Class="animate-fade-up" />
+        <StatCard Label="مانده حساب"
+                  Value="@_stats.OutstandingBalance.ToString("N0")"
+                  Hint="ریال"
+                  Icon="@Icons.Material.Outlined.AccountBalance"
+                  Class="animate-fade-up" />
+    </section>
+
+    <section class="dash-panels">
+        <div class="dash-panel animate-fade-up-delay">
+            <div class="dash-panel-head">
+                <div>
+                    <h2 class="dash-panel-title">پروژه‌های اخیر</h2>
+                    <p class="dash-panel-sub">آخرین به‌روزرسانی‌ها</p>
+                </div>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="GoToProjects">مشاهده همه</MudButton>
+            </div>
+
+            <MudTable Items="@_recentProjects" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_isLoading" Dense="true" Elevation="0" Class="dash-table">
+                <HeaderContent>
+                    <MudTh>پروژه</MudTh>
+                    <MudTh>مشتری</MudTh>
+                    <MudTh>فاکتور</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="پروژه">
+                        <MudLink Underline="Underline.Hover" Color="Color.Primary" OnClick="@(() => GoToProject(context.Id))">@context.Name</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="مشتری">
+                        <MudLink Underline="Underline.Hover" Color="Color.Default" OnClick="@(() => GoToCustomer(context.CustomerId))">@context.CustomerName</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="فاکتور">
+                        <span class="dash-badge">@context.InvoicesCount</span>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <EmptyState Title="هنوز پروژه‌ای ثبت نشده است." Description="با ایجاد پروژه، اینجا نمایش داده می‌شود." />
+                </NoRecordsContent>
+            </MudTable>
+        </div>
+
+        <div class="dash-panel animate-fade-up-delay">
+            <div class="dash-panel-head">
+                <div>
+                    <h2 class="dash-panel-title">فاکتورهای اخیر</h2>
+                    <p class="dash-panel-sub">آخرین صدورها</p>
+                </div>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="GoToInvoices">مشاهده همه</MudButton>
+            </div>
+
+            <MudTable Items="@_recentInvoices" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_isLoading" Dense="true" Elevation="0" Class="dash-table">
+                <HeaderContent>
+                    <MudTh>شماره</MudTh>
+                    <MudTh>مشتری</MudTh>
+                    <MudTh>پروژه</MudTh>
+                    <MudTh>مبلغ</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="شماره">
+                        <MudLink Underline="Underline.Hover" Color="Color.Primary" OnClick="@(() => GoToInvoice(context.Id))">#@context.InvoiceNumber</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="مشتری">
+                        <MudLink Underline="Underline.Hover" Color="Color.Default" OnClick="@(() => GoToCustomer(context.CustomerId))">@context.CustomerName</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="پروژه">
+                        <MudLink Underline="Underline.Hover" Color="Color.Default" OnClick="@(() => GoToProject(context.ProjectId))">@context.ProjectName</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="مبلغ">
+                        <span class="dash-amount">@context.TotalPrice.ToString("N0")</span>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <EmptyState Title="هنوز فاکتوری ثبت نشده است." Description="با صدور فاکتور، اینجا نمایش داده می‌شود." />
+                </NoRecordsContent>
+            </MudTable>
+        </div>
+    </section>
+
+    <section class="dash-actions animate-fade-up-delay">
+        <div class="dash-panel-head">
+            <div>
+                <h2 class="dash-panel-title">عملیات سریع</h2>
+                <p class="dash-panel-sub">میانبرهای پرکاربرد</p>
+            </div>
+            <MudButton Size="Size.Small"
+                       Variant="Variant.Text"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.Insights"
+                       OnClick="GoToFinancialReports">
+                گزارش مالی
+            </MudButton>
+        </div>
+        <div class="dash-action-grid">
+            <button type="button" class="dash-action" @onclick="OnCreateCustomer">
+                <MudIcon Icon="@Icons.Material.Outlined.PersonAddAlt" />
+                <span>ثبت مشتری</span>
+            </button>
+            <button type="button" class="dash-action" @onclick="OnCreateProject">
+                <MudIcon Icon="@Icons.Material.Outlined.AddBusiness" />
+                <span>ایجاد پروژه</span>
+            </button>
+            <button type="button" class="dash-action" @onclick="OnCreateInvoice">
+                <MudIcon Icon="@Icons.Material.Outlined.PostAdd" />
+                <span>صدور فاکتور</span>
+            </button>
+            <button type="button" class="dash-action" @onclick="OnCreateDeposit">
+                <MudIcon Icon="@Icons.Material.Outlined.Savings" />
+                <span>ثبت پرداخت</span>
+            </button>
+            <button type="button" class="dash-action" @onclick="GoToCustomers">
+                <MudIcon Icon="@Icons.Material.Outlined.Groups" />
+                <span>مشتریان</span>
+            </button>
+            <button type="button" class="dash-action" @onclick="GoToProjects">
+                <MudIcon Icon="@Icons.Material.Outlined.Domain" />
+                <span>پروژه‌ها</span>
+            </button>
+        </div>
+    </section>
+</div>
+
+@code {
+    private DashboardStatsDto _stats = new();
+    private IReadOnlyList<RecentProjectDto> _recentProjects = Array.Empty<RecentProjectDto>();
+    private IReadOnlyList<RecentInvoiceDto> _recentInvoices = Array.Empty<RecentInvoiceDto>();
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync() => await LoadDataAsync();
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var statsTask = DashboardService.GetStatsAsync();
+            var projectsTask = DashboardService.GetRecentProjectsAsync(5);
+            var invoicesTask = DashboardService.GetRecentInvoicesAsync(5);
+            await Task.WhenAll(statsTask, projectsTask, invoicesTask);
+
+            _stats = await statsTask;
+            _recentProjects = await projectsTask;
+            _recentInvoices = await invoicesTask;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری داشبورد: {ex.Message}", Severity.Error);
+            _stats = new DashboardStatsDto();
+            _recentProjects = Array.Empty<RecentProjectDto>();
+            _recentInvoices = Array.Empty<RecentInvoiceDto>();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void GoToCustomers() => NavManager.NavigateTo("/customers");
+    private void GoToProjects() => NavManager.NavigateTo("/projects");
+    private void GoToInvoices() => NavManager.NavigateTo("/invoices");
+    private void GoToFinancialReports() => NavManager.NavigateTo("/reports/financial");
+    private void GoToCustomer(int id) => NavManager.NavigateTo($"/customers/{id}");
+    private void GoToProject(int id) => NavManager.NavigateTo($"/projects/{id}");
+    private void GoToInvoice(int id) => NavManager.NavigateTo($"/invoices/{id}");
+
+    private void OnCreateCustomer() => NavManager.NavigateTo("/customers?new=1");
+
+    private void OnCreateProject() => NavManager.NavigateTo("/projects?new=1");
+
+    private void OnCreateInvoice() => NavManager.NavigateTo("/invoices/new");
+
+    private void OnCreateDeposit() => NavManager.NavigateTo("/deposits?new=1");
+}

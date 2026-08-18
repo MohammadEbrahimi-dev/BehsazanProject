@@ -1,0 +1,24 @@
+<article class="stat-tile @Class">
+    <div class="stat-tile-top">
+        <span class="stat-label">@Label</span>
+        @if (!string.IsNullOrWhiteSpace(Icon))
+        {
+            <span class="stat-icon" aria-hidden="true">
+                <MudIcon Icon="@Icon" />
+            </span>
+        }
+    </div>
+    <p class="stat-value">@Value</p>
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <p class="stat-unit">@Hint</p>
+    }
+</article>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = "—";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

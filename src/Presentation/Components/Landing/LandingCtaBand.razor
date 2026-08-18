@@ -1,0 +1,53 @@
+<section class="landing-cta-band" aria-labelledby="landing-cta-title">
+    <div class="landing-cta-band-inner">
+        <h2 id="landing-cta-title" class="landing-cta-band-title">آماده شروع کار هستید؟</h2>
+        <p class="landing-cta-band-lead">
+            وارد سامانه شوید و مدیریت مشتری، پروژه، فاکتور و پرداخت را از یکجا پیگیری کنید.
+        </p>
+        <div class="landing-cta-row landing-cta-row-center">
+            @if (IsAuthenticated)
+            {
+                <MudButton Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           Size="Size.Large"
+                           Class="landing-cta"
+                           Href="/dashboard"
+                           StartIcon="@Icons.Material.Outlined.Dashboard">
+                    ورود به داشبورد
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Color="Color.Primary"
+                           Variant="Variant.Filled"
+                           Size="Size.Large"
+                           Class="landing-cta"
+                           Href="/login"
+                           StartIcon="@Icons.Material.Filled.Login">
+                    ورود به سامانه
+                </MudButton>
+            }
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Inherit"
+                       Size="Size.Large"
+                       Class="landing-cta-secondary"
+                       Href="/about">
+                داستان پروژه
+            </MudButton>
+        </div>
+    </div>
+</section>
+
+<footer class="landing-footer">
+    <div class="landing-footer-inner">
+        <span>بهسازان</span>
+        <span class="landing-footer-sep" aria-hidden="true">·</span>
+        <a href="/about">درباره پروژه</a>
+        <span class="landing-footer-sep" aria-hidden="true">·</span>
+        <span class="landing-footer-muted">مدیریت مشتری، پروژه و فاکتور</span>
+    </div>
+</footer>
+
+@code {
+    [Parameter] public bool IsAuthenticated { get; set; }
+}

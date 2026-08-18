@@ -1,0 +1,301 @@
+@inject IDepositService DepositService
+@inject CurrentUserAccessor CurrentUser
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@(IsEdit ? Icons.Material.Outlined.EditNote : Icons.Material.Outlined.Savings)"
+                     Color="Color.Primary" />
+            <MudText Typo="Typo.h6">@(IsEdit ? "ویرایش واریزی" : "ثبت واریزی جدید")</MudText>
+        </MudStack>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_isLoadingForm)
+        {
+            <div class="table-empty py-6">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="mt-3 muted">در حال بارگذاری...</p>
+            </div>
+        }
+        else
+        {
+        <MudForm @ref="_form" Model="_model">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudAutocomplete T="ProjectLookupDto"
+                                     @bind-Value="_selectedProject"
+                                     Label="پروژه"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     SearchFunc="SearchProjectsAsync"
+                                     ToStringFunc="@(p => p is null ? string.Empty : p.ToString())"
+                                     ResetValueOnEmptyText="true"
+                                     CoerceText="false"
+                                     Clearable="true"
+                                     DebounceInterval="300"
+                                     MaxItems="20"
+                                     Adornment="Adornment.Start"
+                                     AdornmentIcon="@Icons.Material.Outlined.Domain"
+                                     HelperText="نام پروژه یا مشتری را جستجو کنید"
+                                     Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_depositDate"
+                                   Label="تاریخ واریزی"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Editable="false"
+                                   Culture="@PersianDate.Culture"
+                                   DateFormat="yyyy/MM/dd"
+                                   AdornmentIcon="@Icons.Material.Outlined.Event"
+                                   Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal"
+                                     @bind-Value="_model.Amount"
+                                     Label="مبلغ"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     HideSpinButtons="true"
+                                     Format="N0"
+                                     Culture="@PersianDate.Culture"
+                                     Validation="@(new Func<decimal, string?>(DepositValidationRules.ValidateAmount))"
+                                     Adornment="Adornment.Start"
+                                     AdornmentIcon="@Icons.Material.Outlined.Payments"
+                                     Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.TrackingNumber"
+                                  Label="شماره پیگیری"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@DepositValidationRules.MaxTrackingNumberLength"
+                                  Immediate="true"
+                                  Validation="@(new Func<string?, string?>(DepositValidationRules.ValidateTrackingNumber))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Tag"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.ReferenceNumber"
+                                  Label="شماره مرجع"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@DepositValidationRules.MaxReferenceNumberLength"
+                                  Immediate="true"
+                                  Validation="@(new Func<string?, string?>(DepositValidationRules.ValidateReferenceNumber))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Numbers"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.FromAccountNo"
+                                  Label="شماره حساب مبدا"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@DepositValidationRules.MaxFromAccountNoLength"
+                                  Immediate="true"
+                                  Validation="@(new Func<string?, string?>(DepositValidationRules.ValidateFromAccountNo))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.AccountBalance"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.ToAccountNo"
+                                  Label="شماره حساب مقصد"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@DepositValidationRules.MaxToAccountNoLength"
+                                  Immediate="true"
+                                  Validation="@(new Func<string?, string?>(DepositValidationRules.ValidateToAccountNo))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.AccountBalanceWallet"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField T="string"
+                                  @bind-Value="_model.Description"
+                                  Label="شرح"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  MaxLength="@DepositValidationRules.MaxDescriptionLength"
+                                  Immediate="true"
+                                  Lines="2"
+                                  Validation="@(new Func<string?, string?>(DepositValidationRules.ValidateDescription))"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Outlined.Notes"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel" Disabled="@(_isSaving || _isLoadingForm)">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="SaveAsync"
+                   Disabled="@(_isSaving || _isLoadingForm)"
+                   StartIcon="@Icons.Material.Outlined.Save">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="ms-2" />
+                <span>در حال ذخیره...</span>
+            }
+            else
+            {
+                <span>@(IsEdit ? "ذخیره تغییرات" : "ثبت واریزی")</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public DepositFormDto? Deposit { get; set; }
+
+    [Parameter] public int? DepositId { get; set; }
+
+    [Parameter] public int? PrefillProjectId { get; set; }
+
+    private MudForm? _form;
+    private DepositFormDto _model = new();
+    private ProjectLookupDto? _selectedProject;
+    private DateTime? _depositDate = DateTime.Today;
+    private bool _isSaving;
+    private bool _isLoadingForm;
+
+    private bool IsEdit => _model.Id > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Deposit is null && DepositId is > 0)
+        {
+            _isLoadingForm = true;
+            try
+            {
+                var form = await DepositService.GetForEditAsync(DepositId.Value);
+                if (form is null)
+                {
+                    Snackbar.Add("واریزی مورد نظر یافت نشد", Severity.Warning);
+                    MudDialog.Cancel();
+                    return;
+                }
+
+                Deposit = form;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"خطا در بارگذاری واریزی: {ex.Message}", Severity.Error);
+                MudDialog.Cancel();
+                return;
+            }
+            finally
+            {
+                _isLoadingForm = false;
+            }
+        }
+
+        _model = Deposit?.Clone() ?? new DepositFormDto();
+        _depositDate = _model.DepositDate == default ? DateTime.Today : _model.DepositDate;
+
+        if (IsEdit && _model.ProjectId > 0)
+        {
+            _selectedProject = await DepositService.GetProjectLookupAsync(_model.ProjectId)
+                ?? new ProjectLookupDto
+                {
+                    Id = _model.ProjectId,
+                    Name = _model.ProjectName,
+                    CustomerFullName = _model.CustomerFullName
+                };
+            return;
+        }
+
+        if (PrefillProjectId is > 0)
+        {
+            _selectedProject = await DepositService.GetProjectLookupAsync(PrefillProjectId.Value);
+            if (_selectedProject is not null)
+                _model.ProjectId = _selectedProject.Id;
+        }
+    }
+
+    private async Task<IEnumerable<ProjectLookupDto>> SearchProjectsAsync(string? value, CancellationToken token) =>
+        await DepositService.SearchProjectsAsync(value, 20, token);
+
+    private async Task SaveAsync()
+    {
+        _model.ProjectId = _selectedProject?.Id ?? 0;
+        _model.ProjectName = _selectedProject?.Name ?? string.Empty;
+        _model.CustomerFullName = _selectedProject?.CustomerFullName ?? string.Empty;
+        _model.DepositDate = _depositDate?.Date ?? default;
+
+        if (_form is not null)
+        {
+            await _form.Validate();
+
+            if (!_form.IsValid)
+            {
+                Snackbar.Add("لطفاً خطاهای فرم را برطرف کنید", Severity.Warning);
+                return;
+            }
+        }
+
+        var projectError = DepositValidationRules.ValidateProjectId(_model.ProjectId);
+        if (projectError is not null)
+        {
+            Snackbar.Add(projectError, Severity.Warning);
+            return;
+        }
+
+        var dateError = DepositValidationRules.ValidateDepositDate(_model.DepositDate);
+        if (dateError is not null)
+        {
+            Snackbar.Add(dateError, Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+
+            var result = IsEdit
+                ? await DepositService.UpdateAsync(_model, userId)
+                : await DepositService.CreateAsync(_model, userId);
+
+            if (!result.Succeeded)
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(result.Message, Severity.Success);
+            MudDialog.Close(DialogResult.Ok(result.EntityId ?? _model.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ذخیره واریزی: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

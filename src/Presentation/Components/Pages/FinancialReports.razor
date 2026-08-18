@@ -1,0 +1,457 @@
+@page "/reports/financial"
+@attribute [Authorize]
+@inject IFinancialReportService FinancialReportService
+@inject ISnackbar Snackbar
+@using MudBlazor.Charts
+@using Behsazan.Application.Enums
+
+<PageTitle>گزارش مالی | بهسازان</PageTitle>
+
+<div class="page financial-report">
+    <PageHeader Title="گزارش مالی"
+                Subtitle="نمای کلی درآمد، وصول و مطالبات — مبالغ به ریال" />
+
+    <section class="panel filter-bar animate-fade-in">
+        <div class="panel-toolbar panel-toolbar-wrap">
+            <MudSelect T="string"
+                       Value="_periodKey"
+                       ValueChanged="OnPeriodChangedAsync"
+                       Label="بازه زمانی"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Dense="true"
+                       Class="filter-field-sm"
+                       Disabled="_isLoading">
+                <MudSelectItem Value="@("month")">ماهانه (روزهای ماه جاری)</MudSelectItem>
+                <MudSelectItem Value="@("week")">هفتگی (دو ماه اخیر)</MudSelectItem>
+                <MudSelectItem Value="@("3m")">سه ماه اخیر</MudSelectItem>
+                <MudSelectItem Value="@("6m")">شش ماه اخیر</MudSelectItem>
+                <MudSelectItem Value="@("12m")">دوازده ماه اخیر</MudSelectItem>
+                <MudSelectItem Value="@("ytd")">امسال شمسی</MudSelectItem>
+                <MudSelectItem Value="@("custom")">بازه دلخواه</MudSelectItem>
+            </MudSelect>
+
+            @if (_periodKey == "custom")
+            {
+                <MudDatePicker @bind-Date="_fromDate"
+                               Label="از تاریخ"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Culture="@PersianDate.Culture"
+                               DateFormat="yyyy/MM/dd"
+                               Class="filter-field-date"
+                               Disabled="_isLoading" />
+                <MudDatePicker @bind-Date="_toDate"
+                               Label="تا تاریخ"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Culture="@PersianDate.Culture"
+                               DateFormat="yyyy/MM/dd"
+                               Class="filter-field-date"
+                               Disabled="_isLoading" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Medium"
+                           StartIcon="@Icons.Material.Outlined.Search"
+                           OnClick="ReloadAsync"
+                           Disabled="_isLoading">
+                    اعمال
+                </MudButton>
+            }
+
+            <MudTooltip Text="بازخوانی">
+                <MudIconButton Icon="@Icons.Material.Outlined.Refresh"
+                               Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               OnClick="ReloadAsync"
+                               Disabled="_isLoading"
+                               aria-label="بازخوانی" />
+            </MudTooltip>
+        </div>
+        <p class="filter-hint">@_periodHint</p>
+    </section>
+
+    <section class="dash-stats financial-kpis animate-fade-up">
+        <StatCard Label="درآمد (فاکتور)"
+                  Value="@FinancialFormat.Full(_data.Summary.TotalRevenue)"
+                  Hint="@FinancialFormat.CurrencyUnit"
+                  Icon="@Icons.Material.Outlined.Payments" />
+        <StatCard Label="وصول (پرداخت)"
+                  Value="@FinancialFormat.Full(_data.Summary.TotalCollections)"
+                  Hint="@FinancialFormat.CurrencyUnit"
+                  Icon="@Icons.Material.Outlined.AccountBalanceWallet" />
+        <StatCard Label="مانده مطالبات (کل)"
+                  Value="@FinancialFormat.Full(_data.Summary.OutstandingReceivables)"
+                  Hint="@($"{FinancialFormat.CurrencyUnit} — تمام‌مدت")"
+                  Icon="@Icons.Material.Outlined.AccountBalance" />
+        <StatCard Label="تعداد فاکتور"
+                  Value="@FinancialFormat.Full(_data.Summary.InvoiceCount)"
+                  Hint="@($"{FinancialFormat.Full(_data.Summary.DepositCount)} پرداخت در بازه")"
+                  Icon="@Icons.Material.Outlined.ReceiptLong" />
+    </section>
+
+    <FinancialChart Title="درآمد در برابر وصول"
+                    Subtitle="@_trendSubtitle"
+                    IsLoading="_isLoading"
+                    IsEmpty="_trendEmpty"
+                    Error="@_error"
+                    Class="animate-fade-up chart-card--hero">
+        <div class="chart-frame chart-frame--hero">
+            <MudChart @key="@($"trend-{_chartEpoch}")"
+                      T="double"
+                      ChartType="ChartType.Line"
+                      ChartSeries="_trendSeries"
+                      ChartLabels="@_trendLabels"
+                      ChartOptions="_lineOptions"
+                      Width="100%"
+                      Height="460px"
+                      CanHideSeries="true"
+                      Class="financial-mud-chart financial-mud-chart--hero" />
+        </div>
+    </FinancialChart>
+
+    <div class="financial-charts-grid animate-fade-up">
+        <FinancialChart Title="درآمد بر اساس پروژه"
+                        Subtitle="۸ پروژه برتر — مبلغ کامل در راهنمای شناور (ریال)"
+                        IsLoading="_isLoading"
+                        IsEmpty="_projectEmpty"
+                        Error="@_error">
+            <div class="chart-frame">
+                <MudChart @key="@($"proj-{_chartEpoch}")"
+                          T="double"
+                          ChartType="ChartType.Bar"
+                          ChartSeries="_projectSeries"
+                          ChartLabels="@_projectLabels"
+                          ChartOptions="_barOptions"
+                          Width="100%"
+                          Height="300px"
+                          Class="financial-mud-chart" />
+            </div>
+        </FinancialChart>
+
+        <FinancialChart Title="وضعیت مطالبات پروژه‌ها"
+                        Subtitle="بر اساس مانده تمام‌مدت پروژه‌ها"
+                        IsLoading="_isLoading"
+                        IsEmpty="_receivablesEmpty"
+                        Error="@_error">
+            <MudChart @key="@($"recv-{_chartEpoch}")"
+                      T="double"
+                      ChartType="ChartType.Donut"
+                      ChartSeries="_receivablesSeries"
+                      ChartLabels="@_receivablesLabels"
+                      Width="100%"
+                      Height="280px"
+                      Class="financial-mud-chart" />
+        </FinancialChart>
+    </div>
+
+    <FinancialChart Title="@_invoiceChartTitle"
+                    Subtitle="@_invoiceChartSubtitle"
+                    IsLoading="_isLoading"
+                    IsEmpty="_trendEmpty"
+                    Error="@_error"
+                    Class="animate-fade-up">
+        <div class="chart-frame">
+            <MudChart @key="@($"inv-{_chartEpoch}")"
+                      T="double"
+                      ChartType="ChartType.Bar"
+                      ChartSeries="_invoiceBarSeries"
+                      ChartLabels="@_trendLabels"
+                      ChartOptions="_barOptions"
+                      Width="100%"
+                      Height="300px"
+                      Class="financial-mud-chart" />
+        </div>
+    </FinancialChart>
+
+    <section class="panel animate-fade-up">
+        <div class="panel-head">
+            <div>
+                <h2 class="panel-title">جزئیات پروژه‌های برتر</h2>
+                <p class="panel-sub">درآمد، وصول و اختلاف بازه — ریال</p>
+            </div>
+        </div>
+
+        @if (_isLoading)
+        {
+            <div class="skeleton" style="height: 180px;"></div>
+        }
+        else if (_data.RevenueByProject.Count == 0)
+        {
+            <EmptyState Title="پروژه‌ای در این بازه یافت نشد" />
+        }
+        else
+        {
+            <MudTable Items="@_data.RevenueByProject"
+                      Hover="true"
+                      Dense="true"
+                      Elevation="0"
+                      Breakpoint="Breakpoint.Sm"
+                      Class="data-table dash-table">
+                <HeaderContent>
+                    <MudTh>پروژه</MudTh>
+                    <MudTh>درآمد (ریال)</MudTh>
+                    <MudTh>وصول (ریال)</MudTh>
+                    <MudTh>اختلاف بازه</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="پروژه">
+                        <MudLink Href="@($"/projects/{context.ProjectId}")" Underline="Underline.Hover" Color="Color.Primary">
+                            @context.ProjectName
+                        </MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="درآمد"><span class="dash-amount">@FinancialFormat.Full(context.Revenue)</span></MudTd>
+                    <MudTd DataLabel="وصول"><span class="dash-amount">@FinancialFormat.Full(context.Collections)</span></MudTd>
+                    <MudTd DataLabel="اختلاف بازه"><span class="dash-amount">@FinancialFormat.Full(context.Outstanding)</span></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </section>
+</div>
+
+@code {
+    private readonly LineChartOptions _lineOptions = new()
+    {
+        YAxisToStringFunc = FinancialFormat.Compact,
+        MaxNumYAxisTicks = 6,
+        YAxisLines = true,
+        XAxisLines = false,
+        XAxisLabelRotation = -35,
+        YAxisTitle = FinancialFormat.CurrencyUnit,
+        YAxisRequireZeroPoint = true,
+        ShowLegend = true,
+        ShowToolTips = true,
+        ShowDataMarkers = false,
+        TooltipTitleFormat = "{{X_VALUE}}",
+        TooltipSubtitleFormat = "{{SERIES_NAME}}: {{Y_VALUE}} ریال",
+        ChartPalette = ["#2DD4BF", "#60A5FA"],
+    };
+
+    private readonly BarChartOptions _barOptions = new()
+    {
+        YAxisToStringFunc = FinancialFormat.Compact,
+        MaxNumYAxisTicks = 6,
+        YAxisLines = true,
+        XAxisLines = false,
+        XAxisLabelRotation = -35,
+        YAxisTitle = FinancialFormat.CurrencyUnit,
+        ShowLegend = false,
+        ShowToolTips = true,
+        ShowValues = false,
+        TooltipTitleFormat = "{{X_VALUE}}",
+        TooltipSubtitleFormat = "{{SERIES_NAME}}: {{Y_VALUE}} ریال",
+        ChartPalette = ["#2DD4BF", "#60A5FA"],
+    };
+
+    private FinancialDashboardDto _data = new();
+    private bool _isLoading = true;
+    private string? _error;
+    private string _periodKey = "12m";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private FinancialTrendGranularity _granularity = FinancialTrendGranularity.Month;
+    private int _chartEpoch;
+
+    private string[] _trendLabels = [];
+    private List<ChartSeries<double>> _trendSeries = [];
+    private List<ChartSeries<double>> _invoiceBarSeries = [];
+    private string[] _projectLabels = [];
+    private List<ChartSeries<double>> _projectSeries = [];
+    private string[] _receivablesLabels = [];
+    private List<ChartSeries<double>> _receivablesSeries = [];
+
+    private bool _trendEmpty = true;
+    private bool _projectEmpty = true;
+    private bool _receivablesEmpty = true;
+
+    private string _periodHint => _granularity switch
+    {
+        FinancialTrendGranularity.Day => "نمودار روند به‌صورت روزانه برای ماه جاری شمسی است.",
+        FinancialTrendGranularity.Week => "نمودار روند به‌صورت هفتگی برای حدود دو ماه اخیر است (شروع هفته: شنبه).",
+        _ => "نمودار روند به‌صورت ماهانه است."
+    };
+
+    private string _trendSubtitle => _granularity switch
+    {
+        FinancialTrendGranularity.Day => "روزهای ماه جاری — محور عمودی فشرده؛ مقدار دقیق (ریال) در راهنمای شناور",
+        FinancialTrendGranularity.Week => "هفته‌های دو ماه اخیر — محور عمودی فشرده؛ مقدار دقیق (ریال) در راهنمای شناور",
+        _ => "محور عمودی فشرده (میلیون/میلیارد) — مقدار دقیق (ریال) در راهنمای شناور"
+    };
+
+    private string _invoiceChartTitle => _granularity switch
+    {
+        FinancialTrendGranularity.Day => "مبلغ فاکتور روزانه",
+        FinancialTrendGranularity.Week => "مبلغ فاکتور هفتگی",
+        _ => "مبلغ فاکتور ماهانه"
+    };
+
+    private string _invoiceChartSubtitle => _granularity switch
+    {
+        FinancialTrendGranularity.Day => "جمع مبلغ فاکتورها در هر روز — ریال",
+        FinancialTrendGranularity.Week => "جمع مبلغ فاکتورها در هر هفته — ریال",
+        _ => "جمع مبلغ فاکتورها در هر ماه شمسی — ریال"
+    };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task OnPeriodChangedAsync(string value)
+    {
+        _periodKey = value;
+        if (_periodKey != "custom")
+            await LoadAsync();
+    }
+
+    private async Task ReloadAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            var (from, to, granularity) = ResolveRangeAndGranularity();
+            _granularity = granularity;
+
+            if (_periodKey == "custom" && from.HasValue && to.HasValue && from > to)
+            {
+                Snackbar.Add("تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.", Severity.Warning);
+                return;
+            }
+
+            ClearCharts();
+
+            _data = await FinancialReportService.GetDashboardAsync(from, to, granularity);
+            BuildCharts();
+            _chartEpoch++;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _data = new FinancialDashboardDto();
+            ClearCharts();
+            Snackbar.Add($"خطا در بارگذاری گزارش مالی: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private (DateTime? from, DateTime? to, FinancialTrendGranularity granularity) ResolveRangeAndGranularity()
+    {
+        var today = DateTime.Today;
+        return _periodKey switch
+        {
+            "month" => (
+                PersianDate.StartOfCurrentJalaliMonth(today),
+                today,
+                FinancialTrendGranularity.Day),
+
+            "week" => (
+                PersianDate.StartOfJalaliMonthMonthsAgo(1, today),
+                today,
+                FinancialTrendGranularity.Week),
+
+            "3m" => (PersianDate.StartOfJalaliMonthMonthsAgo(2, today), today, FinancialTrendGranularity.Month),
+            "6m" => (PersianDate.StartOfJalaliMonthMonthsAgo(5, today), today, FinancialTrendGranularity.Month),
+            "12m" => (PersianDate.StartOfJalaliMonthMonthsAgo(11, today), today, FinancialTrendGranularity.Month),
+            "ytd" => (PersianDate.StartOfCurrentJalaliYear(today), today, FinancialTrendGranularity.Month),
+            "custom" => (_fromDate?.Date, _toDate?.Date, FinancialTrendGranularity.Month),
+            _ => (PersianDate.StartOfJalaliMonthMonthsAgo(11, today), today, FinancialTrendGranularity.Month)
+        };
+    }
+
+    private void BuildCharts()
+    {
+        var trends = _data.Trends;
+        var rangeEnd = ResolveRangeAndGranularity().to ?? DateTime.Today;
+
+        ApplyChartDensity(trends.Count);
+
+        _trendLabels = trends.Select(t => FormatTrendLabel(t, rangeEnd)).ToArray();
+        _trendEmpty = trends.Count == 0 || trends.All(t => t.Revenue == 0 && t.Collections == 0);
+
+        _trendSeries =
+        [
+            MoneySeries("درآمد", trends.Select(t => t.Revenue)),
+            MoneySeries("وصول", trends.Select(t => t.Collections))
+        ];
+
+        _invoiceBarSeries =
+        [
+            MoneySeries("فاکتور", trends.Select(t => t.Revenue))
+        ];
+
+        var projects = _data.RevenueByProject;
+        _projectEmpty = projects.Count == 0;
+        _projectLabels = projects.Select(p => Truncate(p.ProjectName, 16)).ToArray();
+        _projectSeries =
+        [
+            MoneySeries("درآمد", projects.Select(p => p.Revenue))
+        ];
+
+        var r = _data.ReceivablesStatus;
+        var values = new double[]
+        {
+            r.FullyPaidCount,
+            r.PartiallyPaidCount,
+            r.UnpaidCount,
+            r.OverpaidCount
+        };
+        _receivablesEmpty = values.All(v => v <= 0);
+        _receivablesLabels = ["تسویه کامل", "تسویه جزئی", "بدون پرداخت", "بیش‌پرداخت"];
+        _receivablesSeries =
+        [
+            new ChartSeries<double>
+            {
+                Name = "وضعیت",
+                Data = new(values),
+                TooltipYValueFormat = "N0",
+                TooltipTitleFormat = "{{X_VALUE}}",
+                TooltipSubtitleFormat = "{{SERIES_NAME}}: {{Y_VALUE}}"
+            }
+        ];
+    }
+
+    private void ApplyChartDensity(int pointCount)
+    {
+        var dense = pointCount > 14;
+        _lineOptions.ShowDataMarkers = !dense;
+        _lineOptions.XAxisLabelRotation = dense ? -50 : -35;
+        _barOptions.XAxisLabelRotation = dense ? -50 : -35;
+    }
+
+    private string FormatTrendLabel(FinancialTrendPointDto point, DateTime rangeEnd) =>
+        _granularity switch
+        {
+            FinancialTrendGranularity.Day => PersianDate.FormatDayLabel(point.PeriodStart),
+            FinancialTrendGranularity.Week => PersianDate.FormatWeekLabel(point.PeriodStart, rangeEnd),
+            _ => PersianDate.FormatMonthYearShort(point.Year, point.Month)
+        };
+
+    private static ChartSeries<double> MoneySeries(string name, IEnumerable<decimal> amounts) =>
+        new()
+        {
+            Name = name,
+            Data = new(amounts.Select(a => (double)a).ToArray()),
+            TooltipYValueFormat = "N0",
+            TooltipTitleFormat = "{{X_VALUE}}",
+            TooltipSubtitleFormat = "{{SERIES_NAME}}: {{Y_VALUE}} ریال"
+        };
+
+    private static string Truncate(string value, int max) =>
+        string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..(max - 1)] + "…";
+
+    private void ClearCharts()
+    {
+        _trendLabels = [];
+        _trendSeries = [];
+        _invoiceBarSeries = [];
+        _projectLabels = [];
+        _projectSeries = [];
+        _receivablesLabels = [];
+        _receivablesSeries = [];
+        _trendEmpty = _projectEmpty = _receivablesEmpty = true;
+    }
+}

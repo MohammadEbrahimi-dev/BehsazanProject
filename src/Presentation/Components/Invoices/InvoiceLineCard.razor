@@ -1,0 +1,345 @@
+<article class="@($"invoice-item-card{(Selected ? " is-selected" : string.Empty)}")"
+         @onclick="OnSelect">
+    <header class="invoice-item-card-head">
+        <span class="invoice-item-index">ردیف @RowNumber</span>
+        <div class="invoice-item-card-btns">
+            <MudTooltip Text="کپی این ردیف (بدون افزودن)">
+                <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy"
+                               Color="Color.Primary"
+                               Size="Size.Medium"
+                               OnClick="OnCopy"
+                               Disabled="Disabled"
+                               aria-label="کپی ردیف" />
+            </MudTooltip>
+            <MudTooltip Text="حذف این ردیف">
+                <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                               Color="Color.Error"
+                               Size="Size.Medium"
+                               OnClick="OnDelete"
+                               Disabled="Disabled"
+                               aria-label="حذف ردیف" />
+            </MudTooltip>
+        </div>
+    </header>
+
+    <div class="invoice-item-fields">
+        <label class="invoice-field">
+            <span>طول</span>
+            <MudNumericField T="decimal"
+                             Value="Item.Length"
+                             ValueChanged="OnLengthChanged"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             HideSpinButtons="true"
+                             Immediate="true"
+                             Min="0"
+                             Disabled="Disabled"
+                             Class="invoice-cell" />
+        </label>
+
+        <label class="invoice-field">
+            <span>تعداد</span>
+            <MudNumericField T="int"
+                             Value="Item.Count"
+                             ValueChanged="OnCountChanged"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             HideSpinButtons="true"
+                             Immediate="true"
+                             Min="1"
+                             Disabled="Disabled"
+                             Class="invoice-cell" />
+        </label>
+
+        <label class="invoice-field">
+            <span>میلگرد پایین</span>
+            <div class="invoice-times-field">
+                <span class="invoice-times-prefix" title="همیشه ۲ برابر">۲×</span>
+                <MudNumericField T="int"
+                                 Value="Item.BottomRebar"
+                                 ValueChanged="OnBottomRebarChanged"
+                                 Variant="Variant.Outlined"
+                                 Margin="Margin.Dense"
+                                 HideSpinButtons="true"
+                                 Immediate="true"
+                                 Min="0"
+                                 Disabled="Disabled"
+                                 Class="invoice-cell" />
+            </div>
+        </label>
+
+        <label class="invoice-field">
+            <span>میلگرد بالا</span>
+            <MudNumericField T="int"
+                             Value="Item.TopRebar"
+                             ValueChanged="OnTopRebarChanged"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             HideSpinButtons="true"
+                             Immediate="true"
+                             Min="0"
+                             Disabled="Disabled"
+                             Class="invoice-cell" />
+        </label>
+
+        <label class="invoice-field">
+            <span>تقویتی</span>
+            <MudNumericField T="int?"
+                             Value="Item.ReinforcementBar"
+                             ValueChanged="OnReinforcementBarChanged"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             HideSpinButtons="true"
+                             Immediate="true"
+                             Clearable="true"
+                             Min="0"
+                             Disabled="Disabled"
+                             Class="invoice-cell" />
+        </label>
+
+        <label class="invoice-field">
+            <span>درصد</span>
+            <MudNumericField T="int?"
+                             Value="Item.ReinforcementPercent"
+                             ValueChanged="OnReinforcementPercentChanged"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             HideSpinButtons="true"
+                             Immediate="true"
+                             Clearable="true"
+                             Min="0"
+                             Max="100"
+                             Disabled="Disabled"
+                             Class="invoice-cell" />
+        </label>
+
+        <label class="invoice-field">
+            <span>زیگزاگ</span>
+            <div class="invoice-times-field">
+                <span class="invoice-times-prefix" title="همیشه ۲ برابر">۲×</span>
+                <MudNumericField T="int"
+                                 Value="Item.Zigzag"
+                                 ValueChanged="OnZigzagChanged"
+                                 Variant="Variant.Outlined"
+                                 Margin="Margin.Dense"
+                                 HideSpinButtons="true"
+                                 Immediate="true"
+                                 Min="0"
+                                 Disabled="Disabled"
+                                 Class="invoice-cell" />
+            </div>
+        </label>
+
+        <label class="invoice-field invoice-field-wide">
+            <span>قیمت واحد (ریال)</span>
+            <MudTextField T="string"
+                          Value="_unitPriceText"
+                          ValueChanged="OnUnitPriceTextChanged"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Disabled="Disabled"
+                          Class="invoice-cell"
+                          HelperText="جداکننده بعد از اتمام تایپ اعمال می‌شود"
+                          OnBlur="CommitAndFormatUnitPriceAsync"
+                          OnKeyUp="OnUnitPriceKeyUp" />
+        </label>
+
+        <div class="invoice-field invoice-field-readonly">
+            <span>طول کل (متر)</span>
+            <strong>@Item.TotalAmount.ToString("N3")</strong>
+        </div>
+
+        <div class="invoice-field invoice-field-readonly invoice-field-price">
+            <span>مبلغ ردیف</span>
+            <strong class="amount-value">@Item.TotalPrice.ToString("N0")</strong>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public InvoiceItemFormDto Item { get; set; } = default!;
+    [Parameter] public int Index { get; set; }
+    [Parameter] public int RowNumber { get; set; }
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnSelected { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback OnCopyClicked { get; set; }
+    [Parameter] public EventCallback OnDeleteClicked { get; set; }
+
+    private string _unitPriceText = string.Empty;
+    private decimal _lastSyncedUnitPrice = -1;
+    private bool _editingUnitPrice;
+    private bool _cachedSelected;
+    private bool _cachedDisabled;
+    private decimal _cachedTotalPrice;
+    private decimal _cachedTotalAmount;
+    private int _cachedRowNumber;
+    private bool _firstRender = true;
+    private bool _forceRender;
+
+    protected override void OnParametersSet()
+    {
+        if (_editingUnitPrice)
+            return;
+
+        if (_lastSyncedUnitPrice != Item.UnitPrice)
+        {
+            _lastSyncedUnitPrice = Item.UnitPrice;
+            _unitPriceText = FormatMoney(Item.UnitPrice);
+        }
+    }
+
+    protected override bool ShouldRender()
+    {
+        if (_forceRender || _firstRender || _editingUnitPrice)
+        {
+            _forceRender = false;
+            _firstRender = false;
+            CacheRenderState();
+            return true;
+        }
+
+        if (_cachedSelected != Selected
+            || _cachedDisabled != Disabled
+            || _cachedTotalPrice != Item.TotalPrice
+            || _cachedTotalAmount != Item.TotalAmount
+            || _cachedRowNumber != RowNumber)
+        {
+            CacheRenderState();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void CacheRenderState()
+    {
+        _cachedSelected = Selected;
+        _cachedDisabled = Disabled;
+        _cachedTotalPrice = Item.TotalPrice;
+        _cachedTotalAmount = Item.TotalAmount;
+        _cachedRowNumber = RowNumber;
+    }
+
+    private Task OnSelect() => OnSelected.InvokeAsync();
+
+    private Task OnCopy() => OnCopyClicked.InvokeAsync();
+
+    private Task OnDelete() => OnDeleteClicked.InvokeAsync();
+
+    private async Task OnLengthChanged(decimal value)
+    {
+        Item.Length = value;
+        await NotifyChangedAsync();
+    }
+
+    private async Task OnCountChanged(int value)
+    {
+        Item.Count = value;
+        await NotifyChangedAsync();
+    }
+
+    private async Task OnBottomRebarChanged(int value)
+    {
+        Item.BottomRebar = value;
+        await NotifyChangedAsync(recalc: false);
+    }
+
+    private async Task OnTopRebarChanged(int value)
+    {
+        Item.TopRebar = value;
+        await NotifyChangedAsync(recalc: false);
+    }
+
+    private async Task OnReinforcementBarChanged(int? value)
+    {
+        Item.ReinforcementBar = value;
+        await NotifyChangedAsync(recalc: false);
+    }
+
+    private async Task OnReinforcementPercentChanged(int? value)
+    {
+        Item.ReinforcementPercent = value;
+        await NotifyChangedAsync(recalc: false);
+    }
+
+    private async Task OnZigzagChanged(int value)
+    {
+        Item.Zigzag = value;
+        await NotifyChangedAsync(recalc: false);
+    }
+
+    private Task OnUnitPriceTextChanged(string value)
+    {
+        _editingUnitPrice = true;
+        _forceRender = true;
+        _unitPriceText = value;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnUnitPriceKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter")
+            await CommitAndFormatUnitPriceAsync();
+    }
+
+    private async Task CommitAndFormatUnitPriceAsync()
+    {
+        _editingUnitPrice = false;
+
+        if (string.IsNullOrWhiteSpace(_unitPriceText))
+        {
+            Item.UnitPrice = 0;
+            _lastSyncedUnitPrice = 0;
+            _unitPriceText = string.Empty;
+            await NotifyChangedAsync();
+            return;
+        }
+
+        if (!TryParseMoney(_unitPriceText, out var amount) || amount < 0)
+        {
+            _unitPriceText = FormatMoney(Item.UnitPrice);
+            _forceRender = true;
+            StateHasChanged();
+            return;
+        }
+
+        Item.UnitPrice = amount;
+        _lastSyncedUnitPrice = amount;
+        _unitPriceText = FormatMoney(amount);
+        await NotifyChangedAsync();
+    }
+
+    private static string FormatMoney(decimal value) =>
+        value <= 0 ? string.Empty : value.ToString("N0");
+
+    private async Task NotifyChangedAsync(bool recalc = true)
+    {
+        if (recalc)
+            Item.Recalculate();
+
+        _forceRender = true;
+        CacheRenderState();
+        await OnChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private static bool TryParseMoney(string? input, out decimal value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(input))
+            return true;
+
+        var normalized = CustomerValidationRules.NormalizeDigits(input)
+            .Replace(",", string.Empty, StringComparison.Ordinal)
+            .Replace("٬", string.Empty, StringComparison.Ordinal)
+            .Replace("،", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("\u00A0", string.Empty, StringComparison.Ordinal);
+
+        return decimal.TryParse(normalized, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
+    }
+}

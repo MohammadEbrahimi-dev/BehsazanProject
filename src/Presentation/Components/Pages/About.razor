@@ -1,0 +1,187 @@
+@page "/about"
+@layout Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>درباره پروژه | بهسازان</PageTitle>
+
+<div class="about-page">
+    <header class="about-top animate-fade-in">
+        <a class="about-logo" href="/">بهسازان</a>
+        <nav class="about-top-nav" aria-label="پیمایش درباره پروژه">
+            <a class="about-top-link" href="/">صفحه اول</a>
+            @if (_isAuthenticated)
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           Href="/dashboard"
+                           StartIcon="@Icons.Material.Outlined.Dashboard">
+                    داشبورد
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           Href="/login"
+                           StartIcon="@Icons.Material.Filled.Login">
+                    ورود
+                </MudButton>
+            }
+        </nav>
+    </header>
+
+    <main class="about-main">
+        <header class="about-hero animate-fade-up">
+            <p class="about-kicker">درباره پروژه</p>
+            <h1 class="about-title">چرا این پروژه ساخته شد؟</h1>
+            <p class="about-lead">
+                این سامانه برای مدیریت مشتریان، پروژه‌ها، فاکتورها، پرداخت‌ها
+                و پیگیری وضعیت مالی پروژه‌ها طراحی شده است — با ریشه در یک نیاز واقعی
+                و شکل‌گیری به‌عنوان پروژه دانشگاهی.
+            </p>
+        </header>
+
+        <section class="about-block animate-fade-up" aria-labelledby="about-intro-title">
+            <h2 id="about-intro-title">معرفی</h2>
+            <p>
+                بهسازان ابزاری برای متمرکز کردن ثبت مشتری و پروژه، صدور فاکتور،
+                ثبت واریزی، مشاهده دفتر کل پروژه و گزارش‌های مالی است.
+                هدف، ساده‌تر کردن کار روزمره است — نه ساخت یک ERP یا سیستم حسابداری سازمانی.
+            </p>
+        </section>
+
+        <section class="about-block about-block-story" aria-labelledby="about-problem-title">
+            <h2 id="about-problem-title">مشکل اولیه</h2>
+            <p>
+                قبل از این سامانه، اطلاعات اغلب در Excel ثبت می‌شد، فاکتورها به‌صورت دستی
+                ساخته می‌شدند و خروجی PDF و نگهداری فایل‌ها زمان‌بر و مستعد ناهماهنگی بود.
+                وقتی فرد آشنا به فرآیند در محل نبود، انجام بسیاری از کارها برای دیگران دشوار می‌شد.
+            </p>
+            <ul class="about-bullet-list">
+                <li>ورود تکراری و دستی داده‌ها</li>
+                <li>ساخت دستی فاکتور و PDF</li>
+                <li>فایل‌های پراکنده و سخت برای نگهداری</li>
+                <li>وابستگی به حضور یک نفر برای ادامه کار</li>
+            </ul>
+        </section>
+
+        <section class="about-block" aria-labelledby="about-solution-title">
+            <h2 id="about-solution-title">راه‌حل نرم‌افزاری</h2>
+            <p>
+                به‌جای چند فایل Excel و فرآیندهای دستی، اطلاعات در یک سیستم متمرکز
+                مدیریت می‌شوند: مشتری → پروژه → فاکتور → پرداخت → گزارش مالی.
+                خروجی Excel و PDF هم از داخل همان سامانه در دسترس است.
+            </p>
+        </section>
+
+        <section class="about-block about-block-muted" aria-labelledby="about-evolution-title">
+            <h2 id="about-evolution-title">مسیر شکل‌گیری</h2>
+            <ol class="about-evolution" aria-label="مراحل شکل‌گیری پروژه">
+                <li>
+                    <strong>نیاز واقعی</strong>
+                    <span>ساده‌سازی ثبت فاکتور و پیگیری مالی</span>
+                </li>
+                <li>
+                    <strong>پروژه دانشگاهی</strong>
+                    <span>انتخاب یک مسئله واقعی به‌جای نمونه نمایشی</span>
+                </li>
+                <li>
+                    <strong>طراحی راه‌حل</strong>
+                    <span>تعریف موجودیت‌ها و گردش کار کسب‌وکار</span>
+                </li>
+                <li>
+                    <strong>پیاده‌سازی</strong>
+                    <span>ساخت سامانه با معماری تمیز و رابط کاربری فارسی</span>
+                </li>
+                <li>
+                    <strong>استفاده واقعی</strong>
+                    <span>پشتیبانی از فرآیند روزمره مشتری، پروژه و فاکتور</span>
+                </li>
+            </ol>
+        </section>
+
+        <section class="about-block" aria-labelledby="about-ledger-title">
+            <h2 id="about-ledger-title">حساب معین و دفتر کل پروژه</h2>
+            <p>
+                در برخی پروژه‌ها، پس از پایان همکاری، برای طرف حساب یک
+                <strong>حساب معین</strong> ایجاد می‌شود تا وضعیت بدهکار/بستانکار
+                و تراکنش‌های مربوط به آن رابطه مالی قابل پیگیری باشد.
+            </p>
+            <p>
+                در نرم‌افزار این مفهوم به‌صورت <strong>دفتر کل پروژه</strong> پیاده شده است:
+                نمایش گردش حساب (فاکتور و واریزی)، مانده، شماره دفتر کل اختیاری،
+                و امکان خروجی Excel / PDF. این بخش پیگیری مالی پروژه است،
+                نه یک سیستم حسابداری کامل.
+            </p>
+        </section>
+
+        <section class="about-meta" aria-labelledby="about-meta-title">
+            <h2 id="about-meta-title" class="visually-hidden">اطلاعات پروژه</h2>
+            <dl class="about-meta-grid">
+                <div>
+                    <dt>نوع پروژه</dt>
+                    <dd>پروژه دانشگاهی + کاربرد واقعی</dd>
+                </div>
+                <div>
+                    <dt>هدف</dt>
+                    <dd>مدیریت مشتری، پروژه، فاکتور و پیگیری مالی</dd>
+                </div>
+                <div>
+                    <dt>تکنولوژی</dt>
+                    <dd>
+                        <ul class="about-tech-list">
+                            <li>ASP.NET Core</li>
+                            <li>Blazor Server</li>
+                            <li>C#</li>
+                            <li>SQL Server</li>
+                            <li>Entity Framework Core</li>
+                            <li>MudBlazor</li>
+                            <li>ClosedXML</li>
+                            <li>QuestPDF</li>
+                        </ul>
+                    </dd>
+                </div>
+            </dl>
+        </section>
+
+        <div class="about-actions">
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       Href="/"
+                       StartIcon="@Icons.Material.Outlined.Home">
+                بازگشت به صفحه اول
+            </MudButton>
+            @if (_isAuthenticated)
+            {
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Href="/dashboard"
+                           StartIcon="@Icons.Material.Outlined.Dashboard">
+                    ورود به داشبورد
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Href="/login"
+                           StartIcon="@Icons.Material.Filled.Login">
+                    ورود به سامانه
+                </MudButton>
+            }
+        </div>
+    </main>
+</div>
+
+@code {
+    private bool _isAuthenticated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isAuthenticated = state.User.Identity?.IsAuthenticated == true;
+    }
+}

@@ -1,0 +1,459 @@
+@page "/invoices/{Id:int}"
+@attribute [Authorize]
+@inject IInvoiceService InvoiceService
+@inject IInvoiceExcelService ExcelService
+@inject IInvoicePdfService PdfService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime Js
+
+<PageTitle>@(_invoice is null ? "جزئیات فاکتور" : $"فاکتور #{_invoice.InvoiceNumber}") | بهسازان</PageTitle>
+
+<div class="page">
+    @if (_isLoading)
+    {
+        <div class="panel">
+            <MudProgressLinear Indeterminate="true" Rounded="true" Color="Color.Primary" />
+            <p class="table-empty">در حال بارگذاری اطلاعات فاکتور...</p>
+        </div>
+    }
+    else if (_invoice is null)
+    {
+        <div class="panel table-empty">
+            <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" Size="Size.Large" />
+            <p>فاکتور مورد نظر یافت نشد یا حذف شده است.</p>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.ArrowForward"
+                       OnClick="GoToList">
+                بازگشت به لیست فاکتورها
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <header class="page-header animate-fade-in">
+            <div class="detail-identity">
+                <MudAvatar Color="Color.Tertiary" Size="Size.Large">
+                    <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" />
+                </MudAvatar>
+                <div>
+                    <h1 class="page-title mono">فاکتور #@_invoice.InvoiceNumber</h1>
+                    <p class="page-subtitle">
+                        تاریخ صدور:
+                        <span>@PersianDate.Format(_invoice.InvoiceDate, includeTime: false)</span>
+                        @if (!string.IsNullOrWhiteSpace(_invoice.Title))
+                        {
+                            <text> — </text>
+                            <span>@_invoice.Title</span>
+                        }
+                    </p>
+                </div>
+            </div>
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Outlined.ArrowForward"
+                           OnClick="GoToList">
+                    لیست فاکتورها
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Person"
+                           OnClick="GoToCustomer">
+                    صفحه مشتری
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Apartment"
+                           OnClick="GoToProject">
+                    صفحه پروژه
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Success"
+                           StartIcon="@Icons.Custom.FileFormats.FileExcel"
+                           OnClick="ExportExcelAsync"
+                           Disabled="_isExporting">
+                    خروجی اکسل
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Outlined.PictureAsPdf"
+                           OnClick="ExportPdfAsync"
+                           Disabled="_isExporting">
+                    خروجی PDF
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.Edit"
+                           OnClick="GoToEdit">
+                    ویرایش
+                </MudButton>
+                <MudTooltip Text="حذف فاکتور">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                   Color="Color.Error"
+                                   Variant="Variant.Outlined"
+                                   OnClick="ConfirmDeleteAsync"
+                                   aria-label="حذف فاکتور" />
+                </MudTooltip>
+            </MudStack>
+        </header>
+
+        <section class="detail-facts animate-fade-up">
+            <article class="fact-tile">
+                <span class="fact-label">عنوان سقف</span>
+                <span class="fact-value fact-value-sm">
+                    @(string.IsNullOrWhiteSpace(_invoice.Title) ? "—" : _invoice.Title)
+                </span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">مبلغ کل</span>
+                <span class="fact-value amount-value">@_invoice.TotalPrice.ToString("N0")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">جمع طول کل</span>
+                <span class="fact-value fact-value-sm">@_invoice.TotalAmount.ToString("N3")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">جمع تعداد</span>
+                <span class="fact-value">@_invoice.Items.Sum(i => i.Count).ToString("N0")</span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">هزینه حمل</span>
+                <span class="fact-value fact-value-sm">
+                    @(_invoice.ShippingCost?.ToString("N0") ?? "—")
+                </span>
+            </article>
+            <article class="fact-tile">
+                <span class="fact-label">تعداد اقلام</span>
+                <span class="fact-value">@_invoice.Items.Count.ToString("N0")</span>
+            </article>
+        </section>
+
+        <section class="invoice-info-grid animate-fade-up">
+            <article class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2 class="panel-title">اطلاعات مشتری</h2>
+                        <p class="panel-sub">مالک پروژه مرتبط با این فاکتور</p>
+                    </div>
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Text"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.OpenInNew"
+                               OnClick="GoToCustomer">
+                        مشاهده
+                    </MudButton>
+                </div>
+                <div class="detail-meta-grid detail-meta-grid-2">
+                    <div>
+                        <span class="fact-label">نام</span>
+                        <p class="detail-meta-value">@_invoice.CustomerFullName</p>
+                    </div>
+                    <div>
+                        <span class="fact-label">کد ملی</span>
+                        <p class="detail-meta-value mono">@_invoice.CustomerNationalCode</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2 class="panel-title">اطلاعات پروژه</h2>
+                        <p class="panel-sub">پروژه‌ای که فاکتور برای آن صادر شده</p>
+                    </div>
+                    <MudButton Size="Size.Small"
+                               Variant="Variant.Text"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Outlined.OpenInNew"
+                               OnClick="GoToProject">
+                        مشاهده
+                    </MudButton>
+                </div>
+                <div class="detail-meta-grid detail-meta-grid-2">
+                    <div>
+                        <span class="fact-label">نام پروژه</span>
+                        <p class="detail-meta-value">@_invoice.ProjectName</p>
+                    </div>
+                    <div>
+                        <span class="fact-label">نوع تیرچه</span>
+                        <p class="detail-meta-value">
+                            <span class="type-chip">@ProjectValidationRules.GetJoistTypeLabel(_invoice.ProjectJoistType)</span>
+                        </p>
+                    </div>
+                    <div>
+                        <span class="fact-label">آدرس</span>
+                        <p class="detail-meta-value">@_invoice.ProjectAddress</p>
+                    </div>
+                    <div>
+                        <span class="fact-label">شماره دفتر کل</span>
+                        <p class="detail-meta-value mono">
+                            @(_invoice.ProjectGeneralLedgerNumber?.ToString() ?? "—")
+                        </p>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">اقلام فاکتور</h2>
+                    <p class="panel-sub">ردیف‌های تیرچه این فاکتور</p>
+                </div>
+            </div>
+
+            @if (_invoice.Items.Count == 0)
+            {
+                <div class="table-empty">
+                    <MudIcon Icon="@Icons.Material.Outlined.PlaylistRemove" Size="Size.Large" />
+                    <p>این فاکتور هنوز قلمی ندارد.</p>
+                </div>
+            }
+            else
+            {
+                <div class="invoice-items-wrap">
+                    <MudTable Items="_invoice.Items"
+                              Hover="true"
+                              Dense="true"
+                              Elevation="0"
+                              Breakpoint="Breakpoint.Md"
+                              Class="data-table invoice-items-table">
+                        <HeaderContent>
+                            <MudTh Class="text-center">#</MudTh>
+                            <MudTh>طول</MudTh>
+                            <MudTh>تعداد</MudTh>
+                            <MudTh>میلگرد پایین</MudTh>
+                            <MudTh>میلگرد بالا</MudTh>
+                            <MudTh>تقویتی</MudTh>
+                            <MudTh>درصد</MudTh>
+                            <MudTh>زیگزاگ</MudTh>
+                            <MudTh>قیمت واحد</MudTh>
+                            <MudTh>طول کل (متر)</MudTh>
+                            <MudTh>مبلغ</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="#" Class="text-center muted">@GetItemIndex(context)</MudTd>
+                            <MudTd DataLabel="طول">@context.Length.ToString("N4")</MudTd>
+                            <MudTd DataLabel="تعداد">@context.Count</MudTd>
+                            <MudTd DataLabel="میلگرد پایین">
+                                <span dir="ltr">@InvoiceValidationRules.FormatTimesTwo(context.BottomRebar)</span>
+                            </MudTd>
+                            <MudTd DataLabel="میلگرد بالا">@context.TopRebar</MudTd>
+                            <MudTd DataLabel="تقویتی">@(context.ReinforcementBar?.ToString() ?? "—")</MudTd>
+                            <MudTd DataLabel="درصد">@(context.ReinforcementPercent?.ToString() ?? "—")</MudTd>
+                            <MudTd DataLabel="زیگزاگ">
+                                <span dir="ltr">@InvoiceValidationRules.FormatTimesTwo(context.Zigzag)</span>
+                            </MudTd>
+                            <MudTd DataLabel="قیمت واحد">
+                                <span class="amount-value">@context.UnitPrice.ToString("N0")</span>
+                            </MudTd>
+                            <MudTd DataLabel="طول کل (متر)">@context.TotalAmount.ToString("N3")</MudTd>
+                            <MudTd DataLabel="مبلغ">
+                                <span class="amount-value fw-600">@context.TotalPrice.ToString("N0")</span>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </div>
+
+                <div class="invoice-totals">
+                    <div class="invoice-total-row">
+                        <span class="fact-label">جمع تعداد</span>
+                        <span class="fw-600">@_invoice.Items.Sum(i => i.Count).ToString("N0")</span>
+                    </div>
+                    <div class="invoice-total-row">
+                        <span class="fact-label">جمع طول کل</span>
+                        <span class="fw-600">@_invoice.TotalAmount.ToString("N3")</span>
+                    </div>
+                    @if (_invoice.ShippingCost is > 0)
+                    {
+                        <div class="invoice-total-row">
+                            <span class="fact-label">هزینه حمل</span>
+                            <span class="amount-value">@_invoice.ShippingCost.Value.ToString("N0")</span>
+                        </div>
+                    }
+                    <div class="invoice-total-row invoice-total-row-grand">
+                        <span class="fact-label">جمع مبلغ</span>
+                        <span class="amount-value fw-600">@_invoice.TotalPrice.ToString("N0")</span>
+                    </div>
+                </div>
+            }
+        </section>
+
+        <section class="panel animate-fade-up-delay">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title">تاریخچه</h2>
+                    <p class="panel-sub">زمان ثبت و آخرین تغییر</p>
+                </div>
+            </div>
+            <div class="detail-meta-grid detail-meta-grid-2">
+                <div>
+                    <span class="fact-label">تاریخ ثبت</span>
+                    <p class="detail-meta-value">@PersianDate.Format(_invoice.CreatedAt)</p>
+                </div>
+                <div>
+                    <span class="fact-label">آخرین تغییر</span>
+                    <p class="detail-meta-value">@PersianDate.FormatOrDash(_invoice.ModifiedAt)</p>
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private InvoiceDetailsDto? _invoice;
+    private bool _isLoading = true;
+    private bool _isExporting;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task ExportExcelAsync()
+    {
+        if (_invoice is null || _isExporting)
+            return;
+
+        _isExporting = true;
+        try
+        {
+            var file = await ExcelService.ExportAsync(Id);
+            if (file is null)
+            {
+                Snackbar.Add("ساخت فایل اکسل ممکن نشد", Severity.Error);
+                return;
+            }
+
+            await FileDownload.SaveAsync(Js, file);
+            Snackbar.Add("فایل اکسل آماده شد", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در خروجی اکسل: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        if (_invoice is null || _isExporting)
+            return;
+
+        _isExporting = true;
+        try
+        {
+            var file = await PdfService.ExportAsync(Id);
+            if (file is null)
+            {
+                Snackbar.Add("ساخت فایل PDF ممکن نشد", Severity.Error);
+                return;
+            }
+
+            await FileDownload.SaveAsync(Js, file);
+            Snackbar.Add("فایل PDF آماده شد", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در خروجی PDF: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _invoice = await InvoiceService.GetByIdAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری اطلاعات فاکتور: {ex.Message}", Severity.Error);
+            _invoice = null;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private int GetItemIndex(InvoiceItemPreviewDto item)
+    {
+        if (_invoice is null)
+            return 0;
+
+        for (var i = 0; i < _invoice.Items.Count; i++)
+        {
+            if (_invoice.Items[i].Id == item.Id)
+                return i + 1;
+        }
+
+        return 0;
+    }
+
+    private void GoToEdit() => NavManager.NavigateTo($"/invoices/edit/{Id}");
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_invoice is null)
+            return;
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف فاکتور" },
+            { x => x.Message, $"آیا از حذف فاکتور شماره {_invoice.InvoiceNumber} مطمئن هستید؟" },
+            { x => x.Details, "این عملیات قابل بازگشت نیست." },
+            { x => x.ConfirmText, "حذف فاکتور" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف فاکتور", parameters, new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraSmall,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = false
+        });
+        var confirmation = await dialog.Result;
+
+        if (confirmation is null || confirmation.Canceled)
+            return;
+
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var result = await InvoiceService.DeleteAsync(Id, userId);
+            Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+
+            if (result.Succeeded)
+                GoToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف فاکتور: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void GoToList() => NavManager.NavigateTo("/invoices");
+
+    private void GoToCustomer()
+    {
+        if (_invoice is not null)
+            NavManager.NavigateTo($"/customers/{_invoice.CustomerId}");
+    }
+
+    private void GoToProject()
+    {
+        if (_invoice is not null)
+            NavManager.NavigateTo($"/projects/{_invoice.ProjectId}");
+    }
+}

@@ -1,0 +1,20 @@
+<div class="empty-state @Class" role="status">
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <MudIcon Icon="@Icon" Class="empty-state-icon" />
+    }
+    <p class="empty-state-title">@Title</p>
+    @if (!string.IsNullOrWhiteSpace(Description))
+    {
+        <p class="empty-state-desc">@Description</p>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "داده‌ای یافت نشد";
+    [Parameter] public string? Description { get; set; } = "هنوز موردی برای نمایش وجود ندارد.";
+    [Parameter] public string Icon { get; set; } = Icons.Material.Outlined.Inbox;
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

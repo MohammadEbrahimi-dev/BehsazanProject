@@ -1,0 +1,372 @@
+@page "/customers"
+@attribute [Authorize]
+@inject ICustomerService CustomerService
+@inject CurrentUserAccessor CurrentUser
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<PageTitle>مشتریان | بهسازان</PageTitle>
+
+<div class="page">
+    <header class="page-header animate-fade-in">
+        <div>
+            <h1 class="page-title">مدیریت مشتریان</h1>
+            <p class="page-subtitle">
+                @if (_totalCount > 0)
+                {
+                    <text>@_totalCount.ToString("N0") مشتری ثبت شده است</text>
+                }
+                else
+                {
+                    <text>ثبت و مدیریت اطلاعات مشتریان</text>
+                }
+            </p>
+        </div>
+
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Outlined.PersonAddAlt"
+                   OnClick="OpenCreateDialogAsync">
+            مشتری جدید
+        </MudButton>
+    </header>
+
+    <section class="panel animate-fade-up">
+        <div class="panel-toolbar">
+            <MudTextField T="string"
+                          Value="_searchTerm"
+                          ValueChanged="OnSearchChangedAsync"
+                          Placeholder="جستجو بر اساس نام، کد ملی یا شماره تماس..."
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="false"
+                          DebounceInterval="400"
+                          Clearable="true"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Outlined.Search"
+                          Disabled="_isLoading"
+                          Class="panel-search" />
+
+            <MudTooltip Text="بازخوانی لیست">
+                <MudIconButton Icon="@Icons.Material.Outlined.Refresh"
+                               Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               OnClick="ReloadAsync"
+                               Disabled="_isLoading"
+                               aria-label="بازخوانی" />
+            </MudTooltip>
+        </div>
+
+        <div class="@($"table-loading-wrap{(_isLoading ? " is-loading" : string.Empty)}")">
+            @if (_isLoading)
+            {
+                <MudProgressLinear Class="table-loading-bar" Indeterminate="true" Color="Color.Primary" />
+                <div class="table-loading-veil" aria-hidden="true"></div>
+            }
+
+            <MudTable @ref="_table"
+                  T="CustomerListItemDto"
+                  ServerData="LoadServerDataAsync"
+                  Hover="true"
+                  Striped="false"
+                      Dense="true"
+                  Breakpoint="Breakpoint.Md"
+                  Elevation="0"
+                  RowsPerPage="10"
+                  Class="data-table"
+                  LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh>
+                    <MudTableSortLabel T="CustomerListItemDto" SortLabel="@nameof(CustomerSortBy.FullName)">
+                        نام و نام خانوادگی
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh>
+                    <MudTableSortLabel T="CustomerListItemDto" SortLabel="@nameof(CustomerSortBy.NationalCode)">
+                        کد ملی
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh>شماره اصلی</MudTh>
+                <MudTh>
+                    <MudTableSortLabel T="CustomerListItemDto" SortLabel="@nameof(CustomerSortBy.ProjectsCount)">
+                        پروژه‌ها
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh>
+                    <MudTableSortLabel T="CustomerListItemDto"
+                                       SortLabel="@nameof(CustomerSortBy.LastActivity)"
+                                       InitialDirection="SortDirection.Descending">
+                        آخرین تغییر
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh Class="text-center">عملیات</MudTh>
+            </HeaderContent>
+
+            <RowTemplate>
+                <MudTd DataLabel="نام و نام خانوادگی">
+                    <MudLink Underline="Underline.Hover"
+                             Color="Color.Primary"
+                             Class="fw-600"
+                             OnClick="@(() => GoToDetails(context.Id))">
+                        @context.FullName
+                    </MudLink>
+                </MudTd>
+
+                <MudTd DataLabel="کد ملی">
+                    <span class="mono">@context.NationalCode</span>
+                </MudTd>
+
+                <MudTd DataLabel="شماره اصلی">
+                    @if (string.IsNullOrWhiteSpace(context.PrimaryPhoneNumber))
+                    {
+                        <span class="muted">—</span>
+                    }
+                    else
+                    {
+                        <span class="mono">@context.PrimaryPhoneNumber</span>
+                        @if (context.PhoneNumbersCount > 1)
+                        {
+                            <span class="count-badge ms-2">+@(context.PhoneNumbersCount - 1)</span>
+                        }
+                    }
+                </MudTd>
+
+                <MudTd DataLabel="پروژه‌ها">
+                    <span class="count-badge">@context.ProjectsCount</span>
+                </MudTd>
+
+                <MudTd DataLabel="آخرین تغییر">
+                    <span class="muted">@PersianDate.Format(context.LastActivityAt)</span>
+                </MudTd>
+
+                <MudTd DataLabel="عملیات" Class="text-center table-actions-cell">
+                    <MudTooltip Text="جزئیات">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
+                                       Size="Size.Small"
+                                       OnClick="@(() => GoToDetails(context.Id))"
+                                       aria-label="جزئیات مشتری" />
+                    </MudTooltip>
+                    <MudTooltip Text="ویرایش">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                       Size="Size.Small"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => OpenEditDialogAsync(context.Id))"
+                                       aria-label="ویرایش مشتری" />
+                    </MudTooltip>
+                    <MudTooltip Text="حذف">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                       Size="Size.Small"
+                                       Color="Color.Error"
+                                       OnClick="@(() => ConfirmDeleteAsync(context))"
+                                       aria-label="حذف مشتری" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+
+            <NoRecordsContent>
+                <div class="table-empty">
+                    <MudIcon Icon="@Icons.Material.Outlined.PersonSearch" Size="Size.Large" />
+                    @if (string.IsNullOrWhiteSpace(_searchTerm))
+                    {
+                        <p>هنوز مشتری‌ای ثبت نشده است.</p>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Outlined.PersonAddAlt"
+                                   OnClick="OpenCreateDialogAsync">
+                            ثبت اولین مشتری
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <p>مشتری‌ای با «@_searchTerm» یافت نشد.</p>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OnSearchChangedAsync(string.Empty))">
+                            پاک کردن جستجو
+                        </MudButton>
+                    }
+                </div>
+            </NoRecordsContent>
+
+            <LoadingContent>
+                <div class="table-empty">در حال بارگذاری مشتریان...</div>
+            </LoadingContent>
+
+            <PagerContent>
+                <MudTablePager RowsPerPageString="تعداد در صفحه:"
+                               InfoFormat="{first_item}-{last_item} از {all_items}"
+                               PageSizeOptions="new[] { 10, 25, 50 }" />
+            </PagerContent>
+        </MudTable>
+        </div>
+    </section>
+</div>
+
+@code {
+    private MudTable<CustomerListItemDto>? _table;
+    private string _searchTerm = string.Empty;
+    private int _totalCount;
+    private bool _createDialogRequested;
+    private bool _isLoading;
+    private int _loadGeneration;
+
+    private IReadOnlyList<CustomerListItemDto> _items = Array.Empty<CustomerListItemDto>();
+
+    [SupplyParameterFromQuery(Name = "new")]
+    public string? NewCustomer { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _createDialogRequested || string.IsNullOrEmpty(NewCustomer))
+            return;
+
+        _createDialogRequested = true;
+        await OpenCreateDialogAsync();
+    }
+
+    private async Task<TableData<CustomerListItemDto>> LoadServerDataAsync(
+        TableState state,
+        CancellationToken cancellationToken)
+    {
+        var generation = ++_loadGeneration;
+        _isLoading = true;
+
+        try
+        {
+            var query = new CustomerQueryDto
+            {
+                SearchTerm = _searchTerm,
+                SortBy = ParseSortBy(state.SortLabel),
+                SortDescending = state.SortDirection != SortDirection.Ascending,
+                PageNumber = state.Page + 1,
+                PageSize = state.PageSize
+            };
+
+            var result = await CustomerService.GetPagedAsync(query, cancellationToken);
+            _totalCount = result.TotalCount;
+            _items = result.Items;
+
+            return new TableData<CustomerListItemDto>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new TableData<CustomerListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری مشتریان: {ex.Message}", Severity.Error);
+            return new TableData<CustomerListItemDto>
+            {
+                Items = _items,
+                TotalItems = _totalCount
+            };
+        }
+        finally
+        {
+            if (generation == _loadGeneration)
+                _isLoading = false;
+        }
+    }
+
+    private static CustomerSortBy ParseSortBy(string? sortLabel) =>
+        Enum.TryParse<CustomerSortBy>(sortLabel, out var parsed)
+            ? parsed
+            : CustomerSortBy.LastActivity;
+
+    private async Task OnSearchChangedAsync(string? value)
+    {
+        _searchTerm = value ?? string.Empty;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    #region Commands
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialog = await DialogService.ShowAsync<CustomerFormDialog>("ثبت مشتری جدید", DialogOptions());
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+            await ReloadAsync();
+    }
+
+    private async Task OpenEditDialogAsync(int id)
+    {
+        try
+        {
+            var parameters = new DialogParameters<CustomerFormDialog>
+            {
+                { x => x.CustomerId, id }
+            };
+
+            var dialog = await DialogService.ShowAsync<CustomerFormDialog>("ویرایش مشتری", parameters, DialogOptions());
+            var result = await dialog.Result;
+
+            if (result is { Canceled: false })
+                await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بازکردن فرم ویرایش: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(CustomerListItemDto customer)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "حذف مشتری" },
+            { x => x.Message, $"آیا از حذف «{customer.FullName}» مطمئن هستید؟" },
+            { x => x.Details, customer.ProjectsCount > 0
+                ? $"این مشتری {customer.ProjectsCount} پروژه دارد و تا زمانی که پروژه‌هایش حذف نشوند قابل حذف نیست."
+                : "شماره‌های تماس این مشتری نیز حذف خواهند شد." },
+            { x => x.ConfirmText, "حذف" }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("حذف مشتری", parameters, DialogOptions(small: true));
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+            return;
+
+        try
+        {
+            var userId = await CurrentUser.GetUserIdAsync();
+            var deleteResult = await CustomerService.DeleteAsync(customer.Id, userId);
+
+            Snackbar.Add(
+                deleteResult.Message,
+                deleteResult.Succeeded ? Severity.Success : Severity.Error);
+
+            if (deleteResult.Succeeded)
+                await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف مشتری: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static DialogOptions DialogOptions(bool small = false) => new()
+    {
+        MaxWidth = small ? MaxWidth.ExtraSmall : MaxWidth.Medium,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+    #endregion
+
+    private void GoToDetails(int id) => NavManager.NavigateTo($"/customers/{id}");
+}

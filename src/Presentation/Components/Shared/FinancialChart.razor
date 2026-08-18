@@ -1,0 +1,47 @@
+<section class="chart-card @Class">
+    <div class="chart-card-head">
+        <div>
+            <h2 class="chart-card-title">@Title</h2>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p class="chart-card-sub">@Subtitle</p>
+            }
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="chart-skeleton" aria-busy="true" aria-label="در حال بارگذاری نمودار">
+            <div class="skeleton" style="height: 12px; width: 40%; margin-bottom: 12px;"></div>
+            <div class="skeleton" style="height: 220px; width: 100%;"></div>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(Error))
+    {
+        <EmptyState Title="خطا در بارگذاری"
+                    Description="@Error"
+                    Icon="@Icons.Material.Outlined.ErrorOutline" />
+    }
+    else if (IsEmpty)
+    {
+        <EmptyState Title="داده مالی برای این بازه وجود ندارد"
+                    Description="با تغییر فیلتر تاریخ مجدداً تلاش کنید."
+                    Icon="@Icons.Material.Outlined.ShowChart" />
+    }
+    else
+    {
+        <div class="chart-card-body">
+            @ChildContent
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool IsEmpty { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
